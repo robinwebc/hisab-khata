@@ -1,6 +1,13 @@
 package bd.robin.hisabkhata.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -81,35 +88,74 @@ fun CashScreen(onOpen: (String) -> Unit) {
     val expense = cash.filter { it.type == Kind.EXPENSE }.sumOf { it.amount }
     val shown = cash.filter { filter == "all" || it.type == filter }
     val scope = rememberCoroutineScope()
-    Scaffold(topBar = { SimpleBar(stringResource(R.string.cash_title)) }) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp)) {
-            ToneCard(stringResource(R.string.cash_balance), formatTaka(income - expense), extra.softGet, extra.get, Modifier.fillMaxWidth())
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(vertical = 8.dp)) {
-                FilterChip(filter == "all", { filter = "all" }, { Text(stringResource(R.string.cash_all)) })
-                FilterChip(filter == Kind.INCOME, { filter = Kind.INCOME }, { Text(stringResource(R.string.cash_income)) })
-                FilterChip(filter == Kind.EXPENSE, { filter = Kind.EXPENSE }, { Text(stringResource(R.string.cash_expense)) })
+    var hidden by rememberSaveable { mutableStateOf(false) }
+    val today = bd.robin.hisabkhata.logic.Dates.today()
+    val todayIn = cash.filter { it.type == Kind.INCOME && bd.robin.hisabkhata.logic.Dates.localDate(it.date) == today }.sumOf { it.amount }
+    val todayOut = cash.filter { it.type == Kind.EXPENSE && bd.robin.hisabkhata.logic.Dates.localDate(it.date) == today }.sumOf { it.amount }
+    val mask: (Long) -> String = { if (hidden) "••••" else formatTaka(it) }
+    Column(Modifier.fillMaxSize().background(HeaderRed)) {
+        RedHeader(badge = 0, onInbox = { onOpen("inbox") }, onSupport = { onOpen("support") })
+        Column(Modifier.fillMaxWidth().weight(1f).background(SheetGrey)) {
+            Surface(Modifier.fillMaxWidth().padding(12.dp), shape = RoundedCornerShape(20.dp), color = Color.White) {
+                Row(Modifier.padding(16.dp)) {
+                    Column(Modifier.weight(1f)) {
+                        Text(mask(income), style = MaterialTheme.typography.titleLarge)
+                        Text(stringResource(R.string.cash_today_sales), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Column(Modifier.weight(1f)) {
+                        Text(mask(income - expense), style = MaterialTheme.typography.titleLarge)
+                        Text(stringResource(R.string.cash_current), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
             }
-            LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                if (shown.isEmpty()) item { EmptyHint(stringResource(R.string.cash_empty)) }
+            Row(Modifier.fillMaxWidth().background(Color(0xFFF7F7F7)).padding(horizontal = 16.dp, vertical = 10.dp)) {
+                Text(stringResource(R.string.cash_today_in) + " " + mask(todayIn), color = extra.get, modifier = Modifier.weight(1f))
+                Text(stringResource(R.string.cash_today_out) + " " + mask(todayOut), color = extra.give, modifier = Modifier.weight(1f))
+            }
+            Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Surface(onClick = { onOpen("reports") }, shape = RoundedCornerShape(20.dp), color = Color(0xFFFFF3C4), modifier = Modifier.tag("cash_report")) {
+                    Text(stringResource(R.string.report_title), modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+                }
+                Surface(onClick = { filter = if (filter == "all") Kind.INCOME else "all" }, shape = RoundedCornerShape(20.dp), color = Color(0xFFF1F1F1)) {
+                    Text(stringResource(R.string.cash_reconcile), modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+                }
+                TextButton(onClick = { hidden = !hidden }, modifier = Modifier.tag("cash_hide")) { Text(if (hidden) "◉" else "◎") }
+            }
+            val sale = cash.filter { it.category == "sale" && it.type == Kind.INCOME }.sumOf { it.amount }
+            val purchase = cash.filter { it.category == "stock" || it.category == "purchase" }.sumOf { it.amount }
+            val spent = cash.filter { it.type == Kind.EXPENSE && it.category != "stock" && it.category != "owner" }.sumOf { it.amount }
+            val ownerIn = cash.filter { it.category == "owner" && it.type == Kind.INCOME }.sumOf { it.amount }
+            val ownerOut = cash.filter { it.category == "owner" && it.type == Kind.EXPENSE }.sumOf { it.amount }
+            LazyColumn(Modifier.weight(1f).background(Color.White)) {
+                item { CashLine(stringResource(R.string.cash_sale), mask(sale), extra.get, true) { onOpen("cash/edit?id=&type=income") } }
+                item { CashLine(stringResource(R.string.cash_purchase), mask(purchase), extra.give, false) { onOpen("cash/edit?id=&type=expense") } }
+                item { CashLine(stringResource(R.string.cash_expense_row), mask(spent), extra.give, false) { onOpen("cash/edit?id=&type=expense") } }
+                item { CashLine(stringResource(R.string.cash_owner_in), mask(ownerIn), extra.get, true) { onOpen("cash/edit?id=&type=income") } }
+                item { CashLine(stringResource(R.string.cash_owner_out), mask(ownerOut), extra.give, false) { onOpen("cash/edit?id=&type=expense") } }
                 items(shown, key = { it.id }) { row ->
-                    Surface(shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface, shadowElevation = 1.dp, modifier = Modifier.fillMaxWidth()) {
-                    Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(categoryLabel(row.category), style = MaterialTheme.typography.titleSmall)
-                            Text(Dates.format(row.date, "bn") + if (row.note.isBlank()) "" else " · ${row.note}", style = MaterialTheme.typography.bodySmall)
-                        }
-                        Text(formatTaka(row.amount), color = if (row.type == Kind.INCOME) extra.get else extra.give)
+                    Row(Modifier.padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(categoryLabel(row.category) + " " + row.note, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                        Text(mask(row.amount), color = if (row.type == Kind.INCOME) extra.get else extra.give)
                         IconButton(onClick = { scope.launch { container.repo.deleteCash(row.id) } }) {
                             Icon(Icons.Rounded.Delete, stringResource(R.string.delete))
                         }
                     }
-                    }
                 }
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 8.dp)) {
-                BigButton(stringResource(R.string.cash_add_income), Modifier.weight(1f).tag("cash_in"), container = extra.get) { onOpen("cash/edit?id=&type=income") }
-                BigButton(stringResource(R.string.cash_add_expense), Modifier.weight(1f).tag("cash_out"), container = extra.give) { onOpen("cash/edit?id=&type=expense") }
+        }
+    }
+}
+
+@Composable
+private fun CashLine(label: String, amount: String, tint: Color, received: Boolean, onClick: () -> Unit) {
+    Surface(onClick = onClick, color = Color.White, modifier = Modifier.fillMaxWidth()) {
+        Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(40.dp).clip(CircleShape).background(tint.copy(alpha = 0.15f)), contentAlignment = Alignment.Center) {
+                Text(if (received) "↓" else "↑", color = tint)
             }
+            Text(label, modifier = Modifier.weight(1f).padding(start = 12.dp), style = MaterialTheme.typography.titleMedium)
+            Text(amount, color = tint, style = MaterialTheme.typography.titleMedium)
+            Text("  ›", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

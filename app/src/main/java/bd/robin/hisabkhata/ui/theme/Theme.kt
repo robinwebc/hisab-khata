@@ -39,13 +39,13 @@ data class ExtraColors(
 )
 
 /** বাকি / বিক্রি — money given on credit. */
-const val DefaultSellHex = "C62828"
+const val DefaultSellHex = "E53935"
 
 /** জমা / আদায় — money received. */
-const val DefaultRecoveryHex = "1B7F4A"
+const val DefaultRecoveryHex = "2E7D32"
 
-val SellShades = listOf("C62828", "B71C1C", "E65100", "AD1457", "6A1B9A")
-val RecoveryShades = listOf("1B7F4A", "2E7D32", "00695C", "1565C0", "00838F")
+val SellShades = listOf("E53935", "C62828", "E65100", "AD1457", "6A1B9A")
+val RecoveryShades = listOf("2E7D32", "1B7F4A", "00695C", "1565C0", "00838F")
 const val BlindSellHex = "D55E00"
 const val BlindRecoveryHex = "0072B2"
 

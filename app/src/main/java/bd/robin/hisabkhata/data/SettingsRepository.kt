@@ -49,9 +49,11 @@ data class AppSettings(
     val backupWifiOnly: Boolean = false,
     val backupIncludeSensitive: Boolean = false,
     val offerDriveRestore: Boolean = false,
-    val sellColor: String = "C62828",
-    val recoveryColor: String = "1B7F4A",
+    val sellColor: String = "E53935",
+    val recoveryColor: String = "2E7D32",
     val colorPreset: String = "default",
+    val activeBusinessId: String = "main",
+    val businessBook: String = "",
 )
 
 sealed interface Boot {
@@ -106,6 +108,7 @@ class SettingsRepository(
             .putBoolean("lockOnBackground", settings.lockOnBackground)
             .putBoolean("quickUnlock", settings.quickUnlockEnabled)
             .putInt("passkeyTimeout", settings.passkeyTimeoutMin)
+            .putString("business", settings.activeBusinessId)
             .apply()
     }
 
@@ -158,9 +161,11 @@ class SettingsRepository(
         backupWifiOnly = this[Keys.backupWifi] ?: false,
         backupIncludeSensitive = this[Keys.backupSensitive] ?: false,
         offerDriveRestore = this[Keys.offerRestore] ?: false,
-        sellColor = this[Keys.sellColor] ?: "C62828",
-        recoveryColor = this[Keys.recoveryColor] ?: "1B7F4A",
+        sellColor = this[Keys.sellColor] ?: "E53935",
+        recoveryColor = this[Keys.recoveryColor] ?: "2E7D32",
         colorPreset = this[Keys.colorPreset] ?: "default",
+        activeBusinessId = this[Keys.activeBusiness] ?: "main",
+        businessBook = this[Keys.businessBook] ?: "",
     )
 
     private fun MutablePreferences.write(settings: AppSettings) {
@@ -196,6 +201,8 @@ class SettingsRepository(
         this[Keys.sellColor] = settings.sellColor
         this[Keys.recoveryColor] = settings.recoveryColor
         this[Keys.colorPreset] = settings.colorPreset
+        this[Keys.activeBusiness] = settings.activeBusinessId
+        this[Keys.businessBook] = settings.businessBook
     }
 
     private object Keys {
@@ -231,6 +238,8 @@ class SettingsRepository(
         val sellColor = stringPreferencesKey("sellColor")
         val recoveryColor = stringPreferencesKey("recoveryColor")
         val colorPreset = stringPreferencesKey("colorPreset")
+        val activeBusiness = stringPreferencesKey("activeBusinessId")
+        val businessBook = stringPreferencesKey("businessBook")
     }
 
     companion object {

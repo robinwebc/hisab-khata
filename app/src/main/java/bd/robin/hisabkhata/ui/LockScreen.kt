@@ -10,11 +10,15 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -37,7 +41,6 @@ import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import bd.robin.hisabkhata.R
 import bd.robin.hisabkhata.data.Boot
-import bd.robin.hisabkhata.ui.theme.Leaf
 import kotlinx.coroutines.launch
 
 @Composable
@@ -82,34 +85,37 @@ fun LockScreen() {
     }
 
     Column(
-        Modifier.fillMaxSize().background(Leaf).statusBarsPadding().navigationBarsPadding().padding(20.dp),
+        Modifier.fillMaxSize().background(Color.White).statusBarsPadding().navigationBarsPadding().padding(20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(stringResource(R.string.lock_title), color = Color.White, style = MaterialTheme.typography.headlineMedium)
-        Text(stringResource(R.string.lock_subtitle), color = Color.White.copy(alpha = 0.9f), modifier = Modifier.padding(bottom = 18.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(bottom = 12.dp)) {
-            repeat(maxOf(4, pin.length)) { index ->
+        Text(stringResource(R.string.app_name), color = HeaderRed, style = MaterialTheme.typography.headlineMedium)
+        Text(settings?.accountEmail?.ifBlank { settings.accountName }.orEmpty(), color = Color(0xFF666666), modifier = Modifier.padding(top = 4.dp, bottom = 28.dp))
+        Text(stringResource(R.string.pin_login), style = MaterialTheme.typography.titleMedium)
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.padding(vertical = 18.dp)) {
+            repeat(4) { index ->
                 Box(
-                    Modifier.size(16.dp).clip(CircleShape).background(
-                        if (index < pin.length) Color.White else Color.White.copy(alpha = 0.35f),
+                    Modifier.size(18.dp).clip(CircleShape).background(
+                        if (index < pin.length) HeaderRed else Color(0xFFE0E0E0),
                     ),
                 )
             }
         }
-        if (message.isNotBlank()) Text(message, color = Color(0xFFFFE08A), modifier = Modifier.padding(bottom = 8.dp))
+        if (message.isNotBlank()) Text(message, color = HeaderRed, modifier = Modifier.padding(bottom = 8.dp))
+        Surface(onClick = { confirmReset = true }, shape = RoundedCornerShape(24.dp), color = Color(0xFFF2F2F2), modifier = Modifier.tag("pin_forgot")) {
+            Text(stringResource(R.string.pin_forgot_pill), modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+        }
+        Spacer(Modifier.height(12.dp))
         Keypad(
             onDigit = {
                 if (pin.length < 6) {
                     pin += it.toString()
+                    if (pin.length == 4 && container.passkey.matches(pin)) submit(pin)
                     if (pin.length == 6) submit(pin)
                 }
             },
             onDelete = { pin = pin.dropLast(1) },
             onClear = { pin = "" },
         )
-        if (pin.length in 4..5) {
-            BigButton(stringResource(R.string.done), modifier = Modifier.padding(top = 12.dp).fillMaxWidth()) { submit(pin) }
-        }
         if (canBio && settings?.biometricEnabled == true) {
             TextButton(onClick = {
                 val activity = context as? FragmentActivity ?: return@TextButton
@@ -128,10 +134,7 @@ fun LockScreen() {
                         .setNegativeButtonText(context.getString(R.string.pin_use))
                         .build(),
                 )
-            }) { Text(stringResource(R.string.biometric), color = Color.White) }
-        }
-        TextButton(onClick = { confirmReset = true }) {
-            Text(stringResource(R.string.lock_forgot), color = Color.White)
+            }) { Text(stringResource(R.string.biometric), color = HeaderRed) }
         }
     }
     if (confirmReset) {

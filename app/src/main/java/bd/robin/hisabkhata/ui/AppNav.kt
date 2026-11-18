@@ -2,11 +2,10 @@ package bd.robin.hisabkhata.ui
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AccountBalanceWallet
-import androidx.compose.material.icons.rounded.Groups
-import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Inventory2
-import androidx.compose.material.icons.rounded.MoreHoriz
-import androidx.compose.material.icons.rounded.QrCodeScanner
+import androidx.compose.material.icons.rounded.Menu
+import androidx.compose.material.icons.rounded.MenuBook
+import androidx.compose.material.icons.rounded.QrCode2
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -37,14 +36,13 @@ fun AppNav() {
     val back by nav.currentBackStackEntryAsState()
     val route = back?.destination?.route.orEmpty()
     val tabs = listOf(
-        Tab("home", R.string.nav_home, Icons.Rounded.Home, "nav_home"),
-        Tab("quicksell", R.string.nav_sell, Icons.Rounded.QrCodeScanner, "nav_sell"),
-        Tab("parties", R.string.nav_parties, Icons.Rounded.Groups, "nav_parties"),
-        Tab("cash", R.string.nav_cash, Icons.Rounded.AccountBalanceWallet, "nav_cash"),
-        Tab("products", R.string.nav_products, Icons.Rounded.Inventory2, "nav_products"),
-        Tab("more", R.string.nav_more, Icons.Rounded.MoreHoriz, "nav_more"),
+        Tab("home", R.string.nav_khata, Icons.Rounded.MenuBook, "nav_home"),
+        Tab("cash", R.string.nav_cashbox, Icons.Rounded.AccountBalanceWallet, "nav_cash"),
+        Tab("qr", R.string.nav_qr, Icons.Rounded.QrCode2, "nav_qr"),
+        Tab("products", R.string.nav_stock, Icons.Rounded.Inventory2, "nav_products"),
+        Tab("more", R.string.nav_menu, Icons.Rounded.Menu, "nav_more"),
     )
-    val showBar = tabs.any { it.route == route }
+    val showBar = tabs.any { it.route == route } || route == "parties"
     fun go(dest: String) {
         val clean = dest.substringBefore("&popHome")
         val tab = tabs.any { it.route == clean }
@@ -80,8 +78,11 @@ fun AppNav() {
     }) { padding ->
         NavHost(nav, startDestination = "home", modifier = Modifier.padding(padding)) {
             composable("home") { HomeScreen { go(it) } }
+            composable("qr") { QrHubScreen { go(it) } }
             composable("quicksell") { QuickSellScreen { nav.popBackStack() } }
-            composable("parties") { PartiesScreen { go(it) } }
+            composable("inbox") { InfoScreen(stringResource(R.string.inbox_title), stringResource(R.string.inbox_body)) { nav.popBackStack() } }
+            composable("support") { InfoScreen(stringResource(R.string.support_title), stringResource(R.string.support_body)) { nav.popBackStack() } }
+            composable("parties") { PartiesScreen({ go(it) }, { nav.popBackStack() }) }
             composable("cash") { CashScreen { go(it) } }
             composable("products") { ProductsScreen { go(it) } }
             composable("more") { MoreScreen { go(it) } }

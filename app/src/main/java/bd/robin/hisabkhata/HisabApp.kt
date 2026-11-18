@@ -8,6 +8,7 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import bd.robin.hisabkhata.data.AppContainer
 import bd.robin.hisabkhata.data.CloudDb
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
 class HisabApp : Application() {
@@ -36,6 +37,9 @@ class HisabApp : Application() {
         val current = AppCompatDelegate.getApplicationLocales().toLanguageTags()
         if (!current.startsWith(lang)) {
             AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags(lang))
+        }
+        container.scope.launch {
+            container.settings.settings.collect { container.repo.bindBusiness(it.activeBusinessId) }
         }
         container.scope.launch {
             val current = container.settings.current()

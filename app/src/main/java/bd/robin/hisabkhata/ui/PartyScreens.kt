@@ -47,6 +47,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -80,7 +81,7 @@ import java.util.UUID
 import kotlin.math.abs
 
 @Composable
-fun PartiesScreen(onOpen: (String) -> Unit) {
+fun PartiesScreen(onOpen: (String) -> Unit, onBack: (() -> Unit)? = null) {
     val container = LocalContainer.current
     val parties by container.repo.observeParties().collectAsStateWithLifecycle(emptyList())
     val balances by container.repo.observeBalances().collectAsStateWithLifecycle(emptyList())
@@ -91,7 +92,7 @@ fun PartiesScreen(onOpen: (String) -> Unit) {
         (filter == "all" || party.type == filter) &&
             (query.isBlank() || party.name.contains(query, true) || party.phone.contains(query))
     }.sortedByDescending { abs(map[it.id] ?: 0L) }
-    Scaffold(topBar = { SimpleBar(stringResource(R.string.parties_title)) }) { padding ->
+    Scaffold(topBar = { SimpleBar(stringResource(R.string.parties_title), onBack) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp)) {
             OutlinedTextField(query, { query = it }, modifier = Modifier.fillMaxWidth().tag("party_search"), label = { Text(stringResource(R.string.parties_search)) }, singleLine = true)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(vertical = 8.dp)) {
@@ -159,6 +160,11 @@ fun DetailScreen(id: String, onOpen: (String) -> Unit, onBack: () -> Unit) {
     var deleteParty by remember { mutableStateOf(false) }
     var deleteEntry by remember { mutableStateOf<String?>(null) }
     var remind by remember { mutableStateOf(false) }
+    var gave by rememberSaveable { mutableStateOf("") }
+    var got by rememberSaveable { mutableStateOf("") }
+    var entryNote by rememberSaveable { mutableStateOf("") }
+    var smsOn by rememberSaveable { mutableStateOf(false) }
+    var menu by remember { mutableStateOf(false) }
     val current = party
     if (current == null) {
         SimpleMissing(onBack)
@@ -199,12 +205,24 @@ fun DetailScreen(id: String, onOpen: (String) -> Unit, onBack: () -> Unit) {
         }
     }
 
+    val days = ((System.currentTimeMillis() - current.createdAt) / 86_400_000L).coerceAtLeast(0)
     Scaffold(topBar = {
-        TopAppBar(
-            title = { Text(current.name) },
-            navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Rounded.ArrowBack, stringResource(R.string.back)) } },
-            actions = { IconButton(onClick = { onOpen("edit?id=$id&face=0") }) { Text(stringResource(R.string.edit)) } },
-        )
+        Surface(color = Color.White, shadowElevation = 1.dp) {
+            Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack) { Icon(Icons.Rounded.ArrowBack, stringResource(R.string.back)) }
+                PartyAvatar(current.name, current.photoPath, 40.dp)
+                Column(Modifier.weight(1f).padding(horizontal = 8.dp)) {
+                    Text(current.name, style = MaterialTheme.typography.titleMedium, maxLines = 1)
+                    if (current.phone.isNotBlank()) Text(current.phone, style = MaterialTheme.typography.bodySmall)
+                }
+                if (current.phone.isNotBlank()) {
+                    IconButton(onClick = {
+                        context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:${localBdPhone(current.phone)}")))
+                    }) { Text("☎") }
+                }
+                IconButton(onClick = { menu = true }, modifier = Modifier.tag("party_menu")) { Text("⋮") }
+            }
+        }
     }) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item {
@@ -248,6 +266,59 @@ fun DetailScreen(id: String, onOpen: (String) -> Unit, onBack: () -> Unit) {
                     modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
                 )
                 if (over) Text(stringResource(R.string.over_limit_chip), color = extra.give)
+                Text(stringResource(R.string.days_ago, days), style = MaterialTheme.typography.bodySmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(gave, { gave = it.filter { ch -> ch.isDigit() }; if (it.isNotEmpty()) got = "" }, modifier = Modifier.weight(1f).tag("gave_amount"), label = { Text(stringResource(R.string.gave_money)) })
+                    OutlinedTextField(got, { got = it.filter { ch -> ch.isDigit() }; if (it.isNotEmpty()) gave = "" }, modifier = Modifier.weight(1f).tag("got_amount"), label = { Text(stringResource(R.string.got_money)) })
+                }
+                OutlinedTextField(entryNote, { entryNote = it }, modifier = Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.entry_note)) })
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(true, {}, { Text(Dates.format(System.currentTimeMillis(), lang)) })
+                    FilterChip(smsOn, { smsOn = !smsOn }, { Text(stringResource(R.string.sms_toggle)) })
+                    FilterChip(false, { onOpen("scan/slip") }, { Text(stringResource(R.string.photo_add)) })
+                }
+                val amountValue = (if (gave.isNotBlank()) gave else got).toLongOrNull() ?: 0L
+                BigButton(
+                    stringResource(R.string.confirm_entry),
+                    enabled = amountValue > 0,
+                    container = if (amountValue > 0) HeaderRed else Color(0xFFF8D7D7),
+                    content = Color.White,
+                    modifier = Modifier.tag("confirm_entry"),
+                ) {
+                    val isGave = gave.isNotBlank()
+                    val type = if (current.type == Kind.SUPPLIER) {
+                        if (isGave) Kind.PAYMENT else Kind.CREDIT
+                    } else {
+                        if (isGave) Kind.CREDIT else Kind.PAYMENT
+                    }
+                    scope.launch {
+                        val now = System.currentTimeMillis()
+                        container.repo.saveEntry(
+                            bd.robin.hisabkhata.data.EntryEntity(
+                                id = java.util.UUID.randomUUID().toString(),
+                                partyId = id,
+                                type = type,
+                                amount = amountValue,
+                                note = entryNote,
+                                date = bd.robin.hisabkhata.logic.Dates.startOfDay(now),
+                                createdAt = now,
+                                updatedAt = now,
+                            ),
+                        )
+                        if (smsOn && current.phone.isNotBlank()) {
+                            val body = current.name + " " + formatTaka(amountValue)
+                            runCatching {
+                                context.startActivity(Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:${localBdPhone(current.phone)}")).apply {
+                                    putExtra("sms_body", body)
+                                })
+                            }
+                        }
+                        gave = ""
+                        got = ""
+                        entryNote = ""
+                        context.toast(context.getString(R.string.saved))
+                    }
+                }
                 val faceOn = sensitive?.faceEmbedding != null
                 Text(if (faceOn) stringResource(R.string.face_enrolled) else stringResource(R.string.face_not_enrolled))
                 if (!sensitive?.nidNumber.isNullOrBlank()) Text(stringResource(R.string.nid_saved) + " " + maskNid(sensitive?.nidNumber.orEmpty()))
@@ -288,6 +359,22 @@ fun DetailScreen(id: String, onOpen: (String) -> Unit, onBack: () -> Unit) {
                 TextButton(onClick = { deleteParty = true }) { Text(stringResource(R.string.delete_party), color = extra.give) }
             }
         }
+    }
+    if (menu) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { menu = false },
+            title = { Text(current.name) },
+            text = {
+                Column {
+                    TextButton(onClick = { menu = false; onOpen("edit?id=$id&face=0") }) { Text(stringResource(R.string.edit)) }
+                    TextButton(onClick = { menu = false; onOpen("reports") }) { Text(stringResource(R.string.report_title)) }
+                    TextButton(onClick = { menu = false; onOpen("scan/face?partyId=$id") }) { Text(stringResource(R.string.face_enroll)) }
+                    TextButton(onClick = { menu = false; onOpen("scan/nid/$id") }) { Text(stringResource(R.string.nid)) }
+                    TextButton(onClick = { menu = false; deleteParty = true }) { Text(stringResource(R.string.delete_party)) }
+                }
+            },
+            confirmButton = { TextButton(onClick = { menu = false }) { Text(stringResource(R.string.close)) } },
+        )
     }
     if (deleteParty) {
         ConfirmDialog(stringResource(R.string.delete_party), stringResource(R.string.delete_party_body), stringResource(R.string.delete), {

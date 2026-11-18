@@ -15,6 +15,7 @@ import bd.robin.hisabkhata.logic.SensitiveBackup
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.withContext
@@ -28,23 +29,36 @@ class LedgerRepository(
     private val signals: SyncSignals,
 ) {
     private val uid = MutableStateFlow("")
+    private val business = MutableStateFlow("main")
 
     fun bind(userId: String) {
         uid.value = userId
     }
 
+    fun bindBusiness(id: String) {
+        business.value = id.ifBlank { "main" }
+    }
+
+    fun activeBusiness(): String = business.value
+
     fun activeUid(): String = uid.value
 
-    fun observeParties(): Flow<List<PartyEntity>> = scopedList { db.parties().observeAll(it) }
-    fun observeBalances(): Flow<List<BalanceRow>> = scopedList { db.entries().observeBalances(it) }
-    fun observeRecent(): Flow<List<EntryEntity>> = scopedList { db.entries().observeRecent(it) }
-    fun observeAllEntries(): Flow<List<EntryEntity>> = scopedList { db.entries().observeAll(it) }
-    fun observeEntries(partyId: String): Flow<List<EntryEntity>> = scopedList { db.entries().observeForParty(partyId, it) }
+    fun observeParties(): Flow<List<PartyEntity>> = inBusiness(scopedList { db.parties().observeAll(it) }) { it.businessId }
+    fun observeBalances(): Flow<List<BalanceRow>> = observeAllEntries().let { entries ->
+        combine(entries, business) { rows, _ ->
+            rows.groupBy { it.partyId }.map { (id, list) ->
+                BalanceRow(id, list.sumOf { if (it.type == Kind.CREDIT) it.amount else -it.amount })
+            }
+        }
+    }
+    fun observeRecent(): Flow<List<EntryEntity>> = inBusiness(scopedList { db.entries().observeRecent(it) }) { it.businessId }
+    fun observeAllEntries(): Flow<List<EntryEntity>> = inBusiness(scopedList { db.entries().observeAll(it) }) { it.businessId }
+    fun observeEntries(partyId: String): Flow<List<EntryEntity>> = inBusiness(scopedList { db.entries().observeForParty(partyId, it) }) { it.businessId }
     fun observeParty(id: String): Flow<PartyEntity?> = scopedOne { db.parties().observe(id, it) }
-    fun observeCash(): Flow<List<CashEntity>> = scopedList { db.cash().observeAll(it) }
-    fun observeProducts(): Flow<List<ProductEntity>> = scopedList { db.products().observeAll(it) }
+    fun observeCash(): Flow<List<CashEntity>> = inBusiness(scopedList { db.cash().observeAll(it) }) { it.businessId }
+    fun observeProducts(): Flow<List<ProductEntity>> = inBusiness(scopedList { db.products().observeAll(it) }) { it.businessId }
     fun observeProduct(id: String): Flow<ProductEntity?> = scopedOne { db.products().observe(id, it) }
-    fun observeSales(productId: String): Flow<List<SaleEntity>> = scopedList { db.sales().observeForProduct(productId, it) }
+    fun observeSales(productId: String): Flow<List<SaleEntity>> = inBusiness(scopedList { db.sales().observeForProduct(productId, it) }) { it.businessId }
     fun observeSensitive(id: String): Flow<SensitiveEntity?> = vault.sensitive().observe(id)
     fun observeAllSensitive(): Flow<List<SensitiveEntity>> = vault.sensitive().observeAll()
 
@@ -74,7 +88,7 @@ class LedgerRepository(
     suspend fun saveParty(party: PartyEntity) = withIo {
         val id = uid.value
         if (id.isBlank()) return@withIo
-        db.parties().upsert(party.copy(ownerUid = id))
+        db.parties().upsert(party.copy(ownerUid = id, businessId = party.businessId.ifBlank { business.value }))
         changed()
     }
 
@@ -99,7 +113,7 @@ class LedgerRepository(
     suspend fun saveEntry(entry: EntryEntity) = withIo {
         val id = uid.value
         if (id.isBlank()) return@withIo
-        db.entries().upsert(entry.copy(ownerUid = id))
+        db.entries().upsert(entry.copy(ownerUid = id, businessId = entry.businessId.ifBlank { business.value }))
         changed()
     }
 
@@ -115,7 +129,7 @@ class LedgerRepository(
     suspend fun saveCash(entry: CashEntity) = withIo {
         val id = uid.value
         if (id.isBlank()) return@withIo
-        db.cash().upsert(entry.copy(ownerUid = id))
+        db.cash().upsert(entry.copy(ownerUid = id, businessId = entry.businessId.ifBlank { business.value }))
         changed()
     }
 
@@ -131,7 +145,7 @@ class LedgerRepository(
     suspend fun saveProduct(product: ProductEntity) = withIo {
         val id = uid.value
         if (id.isBlank()) return@withIo
-        db.products().upsert(product.copy(ownerUid = id))
+        db.products().upsert(product.copy(ownerUid = id, businessId = product.businessId.ifBlank { business.value }))
         changed()
     }
 
@@ -165,6 +179,7 @@ class LedgerRepository(
                     date = now,
                     createdAt = now,
                     ownerUid = user,
+                    businessId = business.value,
                 ),
             )
             if (addCash && total > 0) {
@@ -179,6 +194,7 @@ class LedgerRepository(
                         createdAt = now,
                         updatedAt = now,
                         ownerUid = user,
+                        businessId = business.value,
                     ),
                 )
             }
@@ -216,6 +232,7 @@ class LedgerRepository(
                         date = now,
                         createdAt = now,
                         ownerUid = user,
+                        businessId = business.value,
                     ),
                 )
             }
@@ -231,6 +248,7 @@ class LedgerRepository(
                         createdAt = now,
                         updatedAt = now,
                         ownerUid = user,
+                        businessId = business.value,
                     ),
                 )
             } else if (total > 0) {
@@ -245,6 +263,7 @@ class LedgerRepository(
                         createdAt = now,
                         updatedAt = now,
                         ownerUid = user,
+                        businessId = business.value,
                     ),
                 )
             }
@@ -269,6 +288,7 @@ class LedgerRepository(
                     createdAt = now,
                     updatedAt = now,
                     ownerUid = user,
+                    businessId = business.value,
                 ),
             )
         } else {
@@ -283,6 +303,7 @@ class LedgerRepository(
                     createdAt = now,
                     updatedAt = now,
                     ownerUid = user,
+                    businessId = business.value,
                 ),
             )
         }
@@ -473,6 +494,11 @@ class LedgerRepository(
             }
         }
     }
+
+    private fun <T> inBusiness(flow: Flow<List<T>>, idOf: (T) -> String): Flow<List<T>> =
+        combine(flow, business) { rows, biz -> rows.filter { belongs(idOf(it), biz) } }
+
+    private fun belongs(row: String, biz: String) = (row.isBlank() && biz == "main") || row == biz
 
     private fun <T> scopedList(query: (String) -> Flow<List<T>>): Flow<List<T>> = uid.flatMapLatest { id ->
         if (id.isBlank()) flowOf(emptyList()) else query(id)
