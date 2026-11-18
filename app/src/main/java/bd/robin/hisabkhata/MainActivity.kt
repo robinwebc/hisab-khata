@@ -32,8 +32,9 @@ import bd.robin.hisabkhata.ui.AppNav
 import bd.robin.hisabkhata.ui.LocalContainer
 import bd.robin.hisabkhata.ui.LockScreen
 import bd.robin.hisabkhata.ui.LoginScreen
+import bd.robin.hisabkhata.ui.QuickUnlockScreen
 import bd.robin.hisabkhata.ui.theme.HisabTheme
-import bd.robin.hisabkhata.ui.theme.Leaf
+import bd.robin.hisabkhata.ui.theme.NsInk
 
 class MainActivity : AppCompatActivity() {
     override fun attachBaseContext(newBase: Context) {
@@ -48,15 +49,18 @@ class MainActivity : AppCompatActivity() {
         val container = appContainer
         setContent {
             val boot by container.settings.boot.collectAsStateWithLifecycle()
-            val unlocked by container.session.unlocked.collectAsStateWithLifecycle()
+            val deviceUnlocked by container.session.deviceUnlocked.collectAsStateWithLifecycle()
+            val pinUnlocked by container.session.pinUnlocked.collectAsStateWithLifecycle()
             val settings = (boot as? Boot.Ready)?.settings
+            val signedIn = settings?.session == Kind.SESSION_GOOGLE && settings.accountUid.isNotBlank()
             HisabTheme(dark = settings?.theme == Kind.THEME_DARK) {
                 CompositionLocalProvider(LocalContainer provides container) {
                     Box(Modifier.semantics { testTagsAsResourceId = true }.fillMaxSize()) {
                         when {
                             settings == null -> Splash()
-                            settings.session == Kind.SESSION_NONE -> LoginScreen()
-                            settings.pinHash.isNotBlank() && !unlocked -> LockScreen()
+                            !signedIn -> LoginScreen()
+                            settings.quickUnlockEnabled && !deviceUnlocked -> QuickUnlockScreen()
+                            settings.pinHash.isNotBlank() && !pinUnlocked -> LockScreen()
                             else -> AppNav()
                         }
                     }
@@ -68,7 +72,7 @@ class MainActivity : AppCompatActivity() {
 
 @androidx.compose.runtime.Composable
 private fun Splash() {
-    Box(Modifier.fillMaxSize().background(Leaf), contentAlignment = Alignment.Center) {
+    Box(Modifier.fillMaxSize().background(NsInk), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(stringResource(R.string.app_name), color = Color.White, style = MaterialTheme.typography.headlineMedium)
             CircularProgressIndicator(color = Color.White, modifier = Modifier.padding(top = 20.dp))

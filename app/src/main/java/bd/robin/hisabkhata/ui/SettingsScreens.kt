@@ -105,11 +105,12 @@ fun MoreScreen(onOpen: (String) -> Unit) {
             Text(settings?.shopName?.ifBlank { stringResource(R.string.shop_fallback) } ?: "", style = MaterialTheme.typography.headlineSmall)
             Text(
                 if (settings?.session == Kind.SESSION_GOOGLE) stringResource(R.string.signed_in_as, settings.accountEmail.ifBlank { settings.accountName })
-                else stringResource(R.string.guest_mode),
+                else stringResource(R.string.login_google),
             )
             BigButton(stringResource(R.string.profile), modifier = Modifier.tag("open_profile")) { onOpen("profile") }
             BigButton(stringResource(R.string.report_title), modifier = Modifier.tag("open_reports")) { onOpen("reports") }
             BigButton(stringResource(R.string.settings_title), modifier = Modifier.tag("open_settings")) { onOpen("settings") }
+            BigButton(stringResource(R.string.share_app), modifier = Modifier.tag("open_share")) { onOpen("share") }
             Text(stringResource(R.string.data_title), style = MaterialTheme.typography.titleMedium)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.backup_include_sensitive), modifier = Modifier.weight(1f))
@@ -142,13 +143,17 @@ fun MoreScreen(onOpen: (String) -> Unit) {
                 }
             }
             Text(stringResource(R.string.sync), style = MaterialTheme.typography.titleMedium)
+            val phase by container.sync.phase.collectAsStateWithLifecycle()
             Text(
                 when {
-                    settings?.session != Kind.SESSION_GOOGLE -> stringResource(R.string.sync_off_guest)
+                    settings?.session != Kind.SESSION_GOOGLE -> stringResource(R.string.sync_need_google)
                     !FirebaseGate.ready(context) -> stringResource(R.string.sync_off_firebase)
-                    else -> stringResource(R.string.sync_now)
+                    phase is bd.robin.hisabkhata.data.SyncPhase.Error -> (phase as bd.robin.hisabkhata.data.SyncPhase.Error).message
+                    phase is bd.robin.hisabkhata.data.SyncPhase.Syncing -> stringResource(R.string.sync_syncing)
+                    else -> stringResource(R.string.sync_saved)
                 },
             )
+            Text(stringResource(R.string.privacy_device), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             BigButton(stringResource(R.string.sync_now), modifier = Modifier.tag("sync_now")) {
                 scope.launch {
                     when (val outcome = container.sync.sync()) {
@@ -192,9 +197,7 @@ fun MoreScreen(onOpen: (String) -> Unit) {
     if (confirmOut) {
         ConfirmDialog(stringResource(R.string.sign_out), stringResource(R.string.sign_out_body), stringResource(R.string.yes), {
             scope.launch {
-                container.auth.signOut()
-                container.settings.update { it.copy(session = Kind.SESSION_NONE, accountUid = "", accountEmail = "", accountName = "") }
-                container.session.lock()
+                container.account.signOut()
                 confirmOut = false
             }
         }, { confirmOut = false })
@@ -381,6 +384,15 @@ fun SettingsScreen(onOpen: (String) -> Unit, onBack: () -> Unit) {
                 }
             }
             Text(stringResource(R.string.security_title), style = MaterialTheme.typography.titleMedium)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(stringResource(R.string.quick_unlock_setting))
+                    Text(stringResource(R.string.quick_unlock_help), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Switch(settings.quickUnlockEnabled, {
+                    scope.launch { container.settings.update { current -> current.copy(quickUnlockEnabled = it) } }
+                }, modifier = Modifier.tag("quick_unlock_switch"))
+            }
             BigButton(if (settings.pinHash.isBlank()) stringResource(R.string.pin_set) else stringResource(R.string.pin_change), modifier = Modifier.tag("open_pin")) { onOpen("pin") }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.lock_on_leave), modifier = Modifier.weight(1f))

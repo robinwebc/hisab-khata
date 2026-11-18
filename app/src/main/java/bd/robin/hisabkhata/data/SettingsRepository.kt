@@ -41,6 +41,8 @@ data class AppSettings(
     val dailyLimitEnabled: Boolean = false,
     val defaultDailyLimit: Long = 2000,
     val lastSyncAt: Long = 0,
+    val quickUnlockEnabled: Boolean = false,
+    val profileUpdatedAt: Long = 0,
 )
 
 sealed interface Boot {
@@ -51,6 +53,7 @@ sealed interface Boot {
 class SettingsRepository(
     private val context: Context,
     scope: CoroutineScope,
+    private val signals: SyncSignals,
 ) {
     private val store = context.settingsStore
     val settings: Flow<AppSettings> = store.data.map { it.toSettings() }
@@ -67,10 +70,16 @@ class SettingsRepository(
         }
     }
 
-    suspend fun update(block: (AppSettings) -> AppSettings) {
+    suspend fun update(notify: Boolean = true, block: (AppSettings) -> AppSettings) {
         store.edit { prefs ->
-            prefs.write(block(prefs.toSettings()))
+            val before = prefs.toSettings()
+            var next = block(before)
+            if (profileChanged(before, next) && next.profileUpdatedAt == before.profileUpdatedAt && next.profileUpdatedAt >= 0L) {
+                next = next.copy(profileUpdatedAt = System.currentTimeMillis())
+            }
+            prefs.write(next)
         }
+        if (notify) signals.poke()
     }
 
     suspend fun current(): AppSettings = when (val ready = bootState.value) {
@@ -82,10 +91,26 @@ class SettingsRepository(
         context.getSharedPreferences(BOOT, Context.MODE_PRIVATE).edit()
             .putString("lang", settings.language)
             .putString("theme", settings.theme)
+            .putString("session", settings.session)
+            .putString("uid", settings.accountUid)
             .putBoolean("hasPin", settings.pinHash.isNotBlank())
             .putBoolean("lockOnBackground", settings.lockOnBackground)
+            .putBoolean("quickUnlock", settings.quickUnlockEnabled)
             .apply()
     }
+
+    private fun profileChanged(before: AppSettings, next: AppSettings): Boolean =
+        before.ownerName != next.ownerName ||
+            before.shopName != next.shopName ||
+            before.phone != next.phone ||
+            before.address != next.address ||
+            before.businessType != next.businessType ||
+            before.language != next.language ||
+            before.theme != next.theme ||
+            before.defaultCreditLimit != next.defaultCreditLimit ||
+            before.limitMode != next.limitMode ||
+            before.dailyLimitEnabled != next.dailyLimitEnabled ||
+            before.defaultDailyLimit != next.defaultDailyLimit
 
     fun writeBootLanguage(lang: String) {
         context.getSharedPreferences(BOOT, Context.MODE_PRIVATE).edit()
@@ -115,6 +140,8 @@ class SettingsRepository(
         dailyLimitEnabled = this[Keys.dailyLimitEnabled] ?: false,
         defaultDailyLimit = this[Keys.defaultDailyLimit] ?: 2000L,
         lastSyncAt = this[Keys.lastSyncAt] ?: 0L,
+        quickUnlockEnabled = this[Keys.quickUnlock] ?: false,
+        profileUpdatedAt = this[Keys.profileUpdatedAt] ?: 0L,
     )
 
     private fun MutablePreferences.write(settings: AppSettings) {
@@ -139,6 +166,8 @@ class SettingsRepository(
         this[Keys.dailyLimitEnabled] = settings.dailyLimitEnabled
         this[Keys.defaultDailyLimit] = settings.defaultDailyLimit
         this[Keys.lastSyncAt] = settings.lastSyncAt
+        this[Keys.quickUnlock] = settings.quickUnlockEnabled
+        this[Keys.profileUpdatedAt] = settings.profileUpdatedAt
     }
 
     private object Keys {
@@ -163,6 +192,8 @@ class SettingsRepository(
         val dailyLimitEnabled = booleanPreferencesKey("dailyLimitEnabled")
         val defaultDailyLimit = longPreferencesKey("defaultDailyLimit")
         val lastSyncAt = longPreferencesKey("lastSyncAt")
+        val quickUnlock = booleanPreferencesKey("quickUnlock")
+        val profileUpdatedAt = longPreferencesKey("profileUpdatedAt")
     }
 
     companion object {

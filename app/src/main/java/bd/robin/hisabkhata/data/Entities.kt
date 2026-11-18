@@ -21,6 +21,7 @@ data class PartyEntity(
     val verifyStatus: String,
     val createdAt: Long,
     val updatedAt: Long,
+    val ownerUid: String = "",
 )
 
 @Entity(
@@ -44,6 +45,7 @@ data class EntryEntity(
     val date: Long,
     val createdAt: Long,
     val updatedAt: Long,
+    val ownerUid: String = "",
 )
 
 @Entity(tableName = "cash", indices = [Index("date")])
@@ -56,6 +58,7 @@ data class CashEntity(
     val date: Long,
     val createdAt: Long,
     val updatedAt: Long,
+    val ownerUid: String = "",
 )
 
 @Entity(tableName = "products", indices = [Index("barcode"), Index("name")])
@@ -68,6 +71,7 @@ data class ProductEntity(
     val note: String,
     val createdAt: Long,
     val updatedAt: Long,
+    val ownerUid: String = "",
 )
 
 @Entity(tableName = "sales", indices = [Index("productId"), Index("date")])
@@ -80,6 +84,7 @@ data class SaleEntity(
     val amount: Long,
     val date: Long,
     val createdAt: Long,
+    val ownerUid: String = "",
 )
 
 @Entity(tableName = "deletions")
@@ -87,6 +92,7 @@ data class DeletionEntity(
     @PrimaryKey val id: String,
     val collection: String,
     val deletedAt: Long,
+    val ownerUid: String = "",
 )
 
 @Entity(tableName = "sensitive")

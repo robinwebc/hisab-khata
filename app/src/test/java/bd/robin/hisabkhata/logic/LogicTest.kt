@@ -174,4 +174,23 @@ class LogicTest {
         assertEquals(BalanceTone.GIVE, balanceTone(Kind.SUPPLIER, 100))
         assertEquals(BalanceTone.SETTLED, balanceTone(Kind.CUSTOMER, 0))
     }
+
+    @Test
+    fun newerCloudCopyWinsAndSoftDeleteIsNotLost() {
+        assertEquals(CloudChoice.TAKE_REMOTE, cloudChoice(100, 200, 0))
+        assertEquals(CloudChoice.KEEP_LOCAL, cloudChoice(300, 200, 0))
+        assertEquals(CloudChoice.TOMBSTONE, cloudChoice(100, 100, 150))
+        assertEquals(CloudChoice.KEEP_LOCAL, cloudChoice(200, 100, 150))
+    }
+
+    @Test
+    fun signInOnANewPhoneRestoresLiveRowsAndKeepsSoftDeletes() {
+        val cloud = listOf(
+            RemoteDoc("karim", updatedAt = 10),
+            RemoteDoc("rahim", updatedAt = 8, deletedAt = 12),
+            RemoteDoc("shop-sale", updatedAt = 4),
+        )
+        assertEquals(listOf("karim", "shop-sale"), liveIdsAfterRestore(cloud))
+        assertFalse(liveIdsAfterRestore(cloud).contains("rahim"))
+    }
 }

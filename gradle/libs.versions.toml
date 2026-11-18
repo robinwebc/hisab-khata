@@ -26,6 +26,8 @@ desugar = "2.1.4"
 exif = "1.3.7"
 google-services = "4.4.2"
 junit = "4.13.2"
+work = "2.10.0"
+zxing = "3.5.3"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "core" }
@@ -68,6 +70,8 @@ biometric = { module = "androidx.biometric:biometric", version.ref = "biometric"
 desugar = { module = "com.android.tools:desugar_jdk_libs", version.ref = "desugar" }
 exif = { module = "androidx.exifinterface:exifinterface", version.ref = "exif" }
 junit = { module = "junit:junit", version.ref = "junit" }
+androidx-work = { module = "androidx.work:work-runtime-ktx", version.ref = "work" }
+zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

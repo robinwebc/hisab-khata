@@ -7,6 +7,8 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import bd.robin.hisabkhata.data.AppContainer
+import bd.robin.hisabkhata.data.CloudDb
+import kotlinx.coroutines.launch
 
 class HisabApp : Application() {
     lateinit var container: AppContainer
@@ -15,7 +17,18 @@ class HisabApp : Application() {
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
+        CloudDb.firestore()
         val prefs = getSharedPreferences("boot", MODE_PRIVATE)
+        if (prefs.getString("session", "") == "google") {
+            val uid = prefs.getString("uid", "").orEmpty()
+            if (uid.isNotBlank()) {
+                container.repo.bind(uid)
+                container.scope.launch {
+                    container.repo.claimLegacy(uid)
+                    container.signals.poke()
+                }
+            }
+        }
         if (!prefs.contains("lang")) {
             prefs.edit().putString("lang", "bn").apply()
         }
@@ -27,7 +40,8 @@ class HisabApp : Application() {
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
             override fun onStop(owner: LifecycleOwner) {
                 val boot = getSharedPreferences("boot", MODE_PRIVATE)
-                if (boot.getBoolean("hasPin", false) && boot.getBoolean("lockOnBackground", true)) {
+                val pin = boot.getBoolean("hasPin", false) && boot.getBoolean("lockOnBackground", true)
+                if (boot.getBoolean("quickUnlock", false) || pin) {
                     container.session.lock()
                 }
             }

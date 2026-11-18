@@ -9,28 +9,47 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AccountBalanceWallet
+import androidx.compose.material.icons.rounded.BarChart
+import androidx.compose.material.icons.rounded.DocumentScanner
+import androidx.compose.material.icons.rounded.Face
+import androidx.compose.material.icons.rounded.PersonAdd
+import androidx.compose.material.icons.rounded.QrCodeScanner
+import androidx.compose.material.icons.rounded.South
+import androidx.compose.material.icons.rounded.Payments
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import bd.robin.hisabkhata.R
 import bd.robin.hisabkhata.data.Boot
+import bd.robin.hisabkhata.data.SyncPhase
 import bd.robin.hisabkhata.logic.BalanceTone
 import bd.robin.hisabkhata.logic.Dates
 import bd.robin.hisabkhata.logic.Kind
 import bd.robin.hisabkhata.logic.balanceTone
 import bd.robin.hisabkhata.logic.formatTaka
 import bd.robin.hisabkhata.ui.theme.LocalExtra
+import bd.robin.hisabkhata.ui.theme.NsBrand
+import java.time.Instant
 import java.time.LocalTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import kotlin.math.abs
 
 @Composable
@@ -72,6 +91,7 @@ fun HomeScreen(onOpen: (String) -> Unit) {
             else -> R.string.greet_night
         },
     )
+    val phase by container.sync.phase.collectAsStateWithLifecycle()
     val names = parties.associateBy { it.id }
     val shownRecent = recent.filter { entry ->
         val party = names[entry.partyId]
@@ -81,45 +101,69 @@ fun HomeScreen(onOpen: (String) -> Unit) {
         it.name.contains(query, true) || it.phone.contains(query)
     }
 
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         item {
-            Text("$greet, $shop", style = MaterialTheme.typography.headlineSmall)
+            Text(stringResource(R.string.app_name), style = MaterialTheme.typography.labelLarge, color = NsBrand)
+            Text("$greet", style = MaterialTheme.typography.headlineSmall)
+            Text(shop, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             if (settings?.shopName.isNullOrBlank()) {
-                TextButton(onClick = { onOpen("profile") }) { Text(stringResource(R.string.home_profile_hint)) }
+                Surface(onClick = { onOpen("profile") }, shape = RoundedCornerShape(14.dp), color = extra.softGet, modifier = Modifier.padding(top = 8.dp)) {
+                    Text(stringResource(R.string.home_profile_hint), modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp), color = extra.get)
+                }
             } else if (duePeople > 0) {
-                Text(stringResource(R.string.home_due_count, duePeople), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.home_due_count, duePeople), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
+            }
+            SyncLine(phase, settings?.lastSyncAt ?: 0L, settings?.language ?: "bn")
+        }
+        item {
+            Surface(shape = RoundedCornerShape(28.dp), color = NsBrand, shadowElevation = 6.dp, modifier = Modifier.fillMaxWidth()) {
+                Row(Modifier.padding(6.dp)) {
+                    Column(Modifier.weight(1f).padding(14.dp)) {
+                        Text(stringResource(R.string.home_get), color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.labelLarge)
+                        Text(formatTaka(get), color = androidx.compose.ui.graphics.Color.White, style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    Column(Modifier.weight(1f).padding(14.dp)) {
+                        Text(stringResource(R.string.home_give), color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.labelLarge)
+                        Text(formatTaka(give), color = androidx.compose.ui.graphics.Color.White, style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
             }
         }
         item {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                ToneCard(stringResource(R.string.home_get), formatTaka(get), extra.softGet, extra.get, Modifier.weight(1f))
-                ToneCard(stringResource(R.string.home_give), formatTaka(give), extra.softGive, extra.give, Modifier.weight(1f))
-            }
-        }
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                ToneCard(stringResource(R.string.home_today_in), formatTaka(income), extra.softAmber, extra.amber, Modifier.weight(1f))
-                ToneCard(stringResource(R.string.home_today_out), formatTaka(expense), MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurface, Modifier.weight(1f))
+                ToneCard(stringResource(R.string.home_today_in), formatTaka(income), extra.softGet, extra.get, Modifier.weight(1f))
+                ToneCard(stringResource(R.string.home_today_out), formatTaka(expense), extra.softGive, extra.give, Modifier.weight(1f))
             }
         }
         item {
             val actions = listOf(
-                Triple(stringResource(R.string.home_add_customer), extra.get, "home_add_customer" to "edit?id=&face=0"),
-                Triple(stringResource(R.string.home_credit), extra.give, "home_credit" to "pick/credit"),
-                Triple(stringResource(R.string.home_payment), extra.get, "home_payment" to "pick/payment"),
-                Triple(stringResource(R.string.home_cash), extra.amber, "home_cash" to "cash"),
-                Triple(stringResource(R.string.home_scan_slip), extra.get, "home_scan_slip" to "scan/slip"),
-                Triple(stringResource(R.string.home_scan_barcode), extra.amber, "home_scan_barcode" to "scan/barcode"),
-                Triple(stringResource(R.string.home_scan_face), extra.give, "home_scan_face" to "scan/face?partyId="),
-                Triple(stringResource(R.string.home_reports), extra.get, "home_reports" to "reports"),
+                QuickAction(stringResource(R.string.home_add_customer), Icons.Rounded.PersonAdd, "home_add_customer", "edit?id=&face=0"),
+                QuickAction(stringResource(R.string.home_credit), Icons.Rounded.South, "home_credit", "pick/credit"),
+                QuickAction(stringResource(R.string.home_payment), Icons.Rounded.Payments, "home_payment", "pick/payment"),
+                QuickAction(stringResource(R.string.home_cash), Icons.Rounded.AccountBalanceWallet, "home_cash", "cash"),
+                QuickAction(stringResource(R.string.home_scan_slip), Icons.Rounded.DocumentScanner, "home_scan_slip", "scan/slip"),
+                QuickAction(stringResource(R.string.home_scan_barcode), Icons.Rounded.QrCodeScanner, "home_scan_barcode", "scan/barcode"),
+                QuickAction(stringResource(R.string.home_scan_face), Icons.Rounded.Face, "home_scan_face", "scan/face?partyId="),
+                QuickAction(stringResource(R.string.home_reports), Icons.Rounded.BarChart, "home_reports", "reports"),
             )
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                actions.chunked(2).forEach { row ->
+                actions.chunked(4).forEach { row ->
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                        row.forEach { (title, tint, route) ->
-                            ActionTile(title, tint, route.first) { onOpen(route.second) }
+                        row.forEach { action ->
+                            Surface(
+                                onClick = { onOpen(action.route) },
+                                modifier = Modifier.weight(1f).tag(action.tag),
+                                shape = RoundedCornerShape(18.dp),
+                                color = MaterialTheme.colorScheme.surface,
+                                shadowElevation = 1.dp,
+                            ) {
+                                Column(Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Icon(action.icon, null, tint = NsBrand)
+                                    Text(action.title, style = MaterialTheme.typography.labelMedium, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp))
+                                }
+                            }
                         }
-                        if (row.size == 1) androidx.compose.foundation.layout.Spacer(Modifier.weight(1f))
+                        repeat(4 - row.size) { androidx.compose.foundation.layout.Spacer(Modifier.weight(1f)) }
                     }
                 }
             }
@@ -148,18 +192,51 @@ fun HomeScreen(onOpen: (String) -> Unit) {
                 val party = names[entry.partyId]
                 val title = party?.name ?: stringResource(R.string.not_found)
                 val label = if (entry.type == Kind.CREDIT) stringResource(R.string.credit) else stringResource(R.string.payment)
-                TextButton(onClick = { party?.let { onOpen("detail/${it.id}") } }, modifier = Modifier.fillMaxWidth()) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Column {
-                            Text(title, style = MaterialTheme.typography.titleSmall)
-                            Text("${Dates.format(entry.date, settings?.language ?: "bn")} · $label", style = MaterialTheme.typography.bodySmall)
+                Surface(
+                    onClick = { party?.let { onOpen("detail/${it.id}") } },
+                    shape = RoundedCornerShape(18.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    shadowElevation = 1.dp,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(Modifier.padding(14.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text("${Dates.format(entry.date, settings?.language ?: "bn")} · $label", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        Text(formatTaka(entry.amount), style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            formatTaka(entry.amount),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = if (entry.type == Kind.CREDIT) extra.give else extra.get,
+                        )
                     }
                 }
             }
         }
     }
+}
+
+private data class QuickAction(val title: String, val icon: ImageVector, val tag: String, val route: String)
+
+@Composable
+private fun SyncLine(phase: SyncPhase, lastSyncAt: Long, lang: String) {
+    val text = when (phase) {
+        SyncPhase.Syncing -> stringResource(R.string.sync_syncing)
+        is SyncPhase.Error -> phase.message
+        is SyncPhase.Saved -> stringResource(R.string.sync_saved) + " · " + syncClock(phase.at, lang)
+        SyncPhase.Idle -> if (lastSyncAt > 0L) {
+            stringResource(R.string.sync_saved) + " · " + syncClock(lastSyncAt, lang)
+        } else {
+            stringResource(R.string.sync_waiting)
+        }
+    }
+    val color = if (phase is SyncPhase.Error) LocalExtra.current.give else MaterialTheme.colorScheme.onSurfaceVariant
+    Text(text, style = MaterialTheme.typography.bodySmall, color = color, modifier = Modifier.padding(top = 8.dp).tag("sync_status"))
+}
+
+private fun syncClock(millis: Long, lang: String): String {
+    val locale = if (lang == "en") java.util.Locale.US else java.util.Locale.forLanguageTag("bn-BD")
+    return Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("d MMM, h:mm a", locale))
 }
 
 @Composable
@@ -175,10 +252,11 @@ fun PartyRow(name: String, phone: String, photo: String?, tone: BalanceTone, bal
         BalanceTone.GIVE -> stringResource(R.string.balance_give)
         BalanceTone.SETTLED -> stringResource(R.string.balance_settled)
     }
-    androidx.compose.material3.Surface(
+    Surface(
         onClick = onClick,
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(18.dp),
         color = MaterialTheme.colorScheme.surface,
+        shadowElevation = 1.dp,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(Modifier.padding(12.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {

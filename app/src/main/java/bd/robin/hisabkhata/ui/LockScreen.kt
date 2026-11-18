@@ -143,7 +143,6 @@ fun LockScreen() {
             onConfirm = {
                 confirmReset = false
                 scope.launch {
-                    container.repo.eraseBusinessData()
                     container.settings.update { it.copy(pinHash = "", pinSalt = "", biometricEnabled = false) }
                     container.session.unlock()
                 }

@@ -14,6 +14,9 @@ import bd.robin.hisabkhata.logic.SaleBackup
 import bd.robin.hisabkhata.logic.SensitiveBackup
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.UUID
@@ -22,84 +25,135 @@ class LedgerRepository(
     private val db: HisabDatabase,
     private val vault: VaultDatabase,
     private val context: Context,
+    private val signals: SyncSignals,
 ) {
-    fun observeParties(): Flow<List<PartyEntity>> = db.parties().observeAll()
-    fun observeBalances(): Flow<List<BalanceRow>> = db.entries().observeBalances()
-    fun observeRecent(): Flow<List<EntryEntity>> = db.entries().observeRecent()
-    fun observeAllEntries(): Flow<List<EntryEntity>> = db.entries().observeAll()
-    fun observeEntries(partyId: String): Flow<List<EntryEntity>> = db.entries().observeForParty(partyId)
-    fun observeParty(id: String): Flow<PartyEntity?> = db.parties().observe(id)
-    fun observeCash(): Flow<List<CashEntity>> = db.cash().observeAll()
-    fun observeProducts(): Flow<List<ProductEntity>> = db.products().observeAll()
-    fun observeProduct(id: String): Flow<ProductEntity?> = db.products().observe(id)
-    fun observeSales(productId: String): Flow<List<SaleEntity>> = db.sales().observeForProduct(productId)
+    private val uid = MutableStateFlow("")
+
+    fun bind(userId: String) {
+        uid.value = userId
+    }
+
+    fun activeUid(): String = uid.value
+
+    fun observeParties(): Flow<List<PartyEntity>> = scopedList { db.parties().observeAll(it) }
+    fun observeBalances(): Flow<List<BalanceRow>> = scopedList { db.entries().observeBalances(it) }
+    fun observeRecent(): Flow<List<EntryEntity>> = scopedList { db.entries().observeRecent(it) }
+    fun observeAllEntries(): Flow<List<EntryEntity>> = scopedList { db.entries().observeAll(it) }
+    fun observeEntries(partyId: String): Flow<List<EntryEntity>> = scopedList { db.entries().observeForParty(partyId, it) }
+    fun observeParty(id: String): Flow<PartyEntity?> = scopedOne { db.parties().observe(id, it) }
+    fun observeCash(): Flow<List<CashEntity>> = scopedList { db.cash().observeAll(it) }
+    fun observeProducts(): Flow<List<ProductEntity>> = scopedList { db.products().observeAll(it) }
+    fun observeProduct(id: String): Flow<ProductEntity?> = scopedOne { db.products().observe(id, it) }
+    fun observeSales(productId: String): Flow<List<SaleEntity>> = scopedList { db.sales().observeForProduct(productId, it) }
     fun observeSensitive(id: String): Flow<SensitiveEntity?> = vault.sensitive().observe(id)
     fun observeAllSensitive(): Flow<List<SensitiveEntity>> = vault.sensitive().observeAll()
 
-    suspend fun getParty(id: String) = withIo { db.parties().get(id) }
-    suspend fun getEntry(id: String) = withIo { db.entries().get(id) }
+    suspend fun getParty(id: String) = withIo { db.parties().get(id, uid.value) }
+    suspend fun getEntry(id: String) = withIo { db.entries().get(id, uid.value) }
     suspend fun getSensitive(id: String) = withIo { vault.sensitive().get(id) }
-    suspend fun getProduct(id: String) = withIo { db.products().get(id) }
-    suspend fun productByBarcode(code: String) = withIo { db.products().byBarcode(code.trim()) }
-    suspend fun balanceOf(partyId: String) = withIo { db.entries().balance(partyId) }
+    suspend fun getProduct(id: String) = withIo { db.products().get(id, uid.value) }
+    suspend fun productByBarcode(code: String) = withIo { db.products().byBarcode(code.trim(), uid.value) }
+    suspend fun balanceOf(partyId: String) = withIo { db.entries().balance(partyId, uid.value) }
     suspend fun creditOnDay(partyId: String, dayMillis: Long): Long = withIo {
         val start = Dates.startOfDay(dayMillis)
-        db.entries().creditBetween(partyId, start, Dates.endExclusive(Dates.localDate(start)))
+        db.entries().creditBetween(partyId, uid.value, start, Dates.endExclusive(Dates.localDate(start)))
     }
 
-    suspend fun saveParty(party: PartyEntity) = withIo { db.parties().upsert(party) }
+    suspend fun claimLegacy(userId: String) = withIo {
+        if (userId.isBlank()) return@withIo
+        db.withTransaction {
+            db.parties().claim(userId)
+            db.entries().claim(userId)
+            db.cash().claim(userId)
+            db.products().claim(userId)
+            db.sales().claim(userId)
+            db.deletions().claim(userId)
+        }
+    }
+
+    suspend fun saveParty(party: PartyEntity) = withIo {
+        val id = uid.value
+        if (id.isBlank()) return@withIo
+        db.parties().upsert(party.copy(ownerUid = id))
+        changed()
+    }
 
     suspend fun deleteParty(id: String) = withIo {
-        val party = db.parties().get(id) ?: return@withIo
-        val entryIds = db.entries().idsForParty(id)
+        val user = uid.value
+        val party = db.parties().get(id, user) ?: return@withIo
+        val entryIds = db.entries().idsForParty(id, user)
         val sensitive = vault.sensitive().get(id)
         val now = System.currentTimeMillis()
         db.withTransaction {
-            db.parties().delete(id)
-            db.deletions().upsert(DeletionEntity(id, "parties", now))
-            entryIds.forEach { db.deletions().upsert(DeletionEntity(it, "entries", now)) }
+            entryIds.forEach { db.deletions().upsert(DeletionEntity(it, "entries", now, user)) }
+            db.deletions().upsert(DeletionEntity(id, "parties", now, user))
+            db.parties().delete(id, user)
         }
         vault.sensitive().delete(id)
         deleteFile(party.photoPath)
         deleteFile(sensitive?.facePhotoPath)
         deleteFile(sensitive?.nidPhotoPath)
+        changed()
     }
 
-    suspend fun saveEntry(entry: EntryEntity) = withIo { db.entries().upsert(entry) }
+    suspend fun saveEntry(entry: EntryEntity) = withIo {
+        val id = uid.value
+        if (id.isBlank()) return@withIo
+        db.entries().upsert(entry.copy(ownerUid = id))
+        changed()
+    }
 
     suspend fun deleteEntry(id: String) = withIo {
+        val user = uid.value
         db.withTransaction {
-            db.entries().delete(id)
-            db.deletions().upsert(DeletionEntity(id, "entries", System.currentTimeMillis()))
+            db.entries().delete(id, user)
+            db.deletions().upsert(DeletionEntity(id, "entries", System.currentTimeMillis(), user))
         }
+        changed()
     }
 
-    suspend fun saveCash(entry: CashEntity) = withIo { db.cash().upsert(entry) }
+    suspend fun saveCash(entry: CashEntity) = withIo {
+        val id = uid.value
+        if (id.isBlank()) return@withIo
+        db.cash().upsert(entry.copy(ownerUid = id))
+        changed()
+    }
 
     suspend fun deleteCash(id: String) = withIo {
+        val user = uid.value
         db.withTransaction {
-            db.cash().delete(id)
-            db.deletions().upsert(DeletionEntity(id, "cash", System.currentTimeMillis()))
+            db.cash().delete(id, user)
+            db.deletions().upsert(DeletionEntity(id, "cash", System.currentTimeMillis(), user))
         }
+        changed()
     }
 
-    suspend fun saveProduct(product: ProductEntity) = withIo { db.products().upsert(product) }
+    suspend fun saveProduct(product: ProductEntity) = withIo {
+        val id = uid.value
+        if (id.isBlank()) return@withIo
+        db.products().upsert(product.copy(ownerUid = id))
+        changed()
+    }
 
     suspend fun deleteProduct(id: String) = withIo {
+        val user = uid.value
         db.withTransaction {
-            db.products().delete(id)
-            db.deletions().upsert(DeletionEntity(id, "products", System.currentTimeMillis()))
+            db.products().delete(id, user)
+            db.deletions().upsert(DeletionEntity(id, "products", System.currentTimeMillis(), user))
         }
+        changed()
     }
 
     suspend fun sell(productId: String, qty: Int, addCash: Boolean): String? = withIo {
-        val product = db.products().get(productId) ?: return@withIo "missing"
+        val user = uid.value
+        if (user.isBlank()) return@withIo "missing"
+        val product = db.products().get(productId, user) ?: return@withIo "missing"
         if (qty <= 0) return@withIo "qty"
         if (product.stock < qty) return@withIo "stock"
         val now = System.currentTimeMillis()
         val total = product.price * qty
         db.withTransaction {
-            db.products().upsert(product.copy(stock = product.stock - qty, updatedAt = now))
+            db.products().upsert(product.copy(stock = product.stock - qty, updatedAt = now, ownerUid = user))
             db.sales().upsert(
                 SaleEntity(
                     id = UUID.randomUUID().toString(),
@@ -110,6 +164,7 @@ class LedgerRepository(
                     amount = total,
                     date = now,
                     createdAt = now,
+                    ownerUid = user,
                 ),
             )
             if (addCash && total > 0) {
@@ -123,10 +178,12 @@ class LedgerRepository(
                         date = Dates.startOfDay(now),
                         createdAt = now,
                         updatedAt = now,
+                        ownerUid = user,
                     ),
                 )
             }
         }
+        changed()
         null
     }
 
@@ -160,6 +217,7 @@ class LedgerRepository(
     }
 
     suspend fun snapshot(includeSensitive: Boolean): BackupBundle = withIo {
+        val user = uid.value
         val sensitive = if (includeSensitive) {
             vault.sensitive().listAll().map { row ->
                 SensitiveBackup(
@@ -176,33 +234,33 @@ class LedgerRepository(
         }
         BackupBundle(
             exportedAt = System.currentTimeMillis(),
-            parties = db.parties().listAll().map { it.toBackup() },
-            entries = db.entries().listAll().map { it.toBackup() },
-            cash = db.cash().listAll().map { it.toBackup() },
-            products = db.products().listAll().map { it.toBackup() },
-            sales = db.sales().listAll().map { it.toBackup() },
-            deletions = db.deletions().listAll().map { DeletionBackup(it.id, it.collection, it.deletedAt) },
+            parties = db.parties().listAll(user).map { it.toBackup() },
+            entries = db.entries().listAll(user).map { it.toBackup() },
+            cash = db.cash().listAll(user).map { it.toBackup() },
+            products = db.products().listAll(user).map { it.toBackup() },
+            sales = db.sales().listAll(user).map { it.toBackup() },
+            deletions = db.deletions().listAll(user).map { DeletionBackup(it.id, it.collection, it.deletedAt) },
             sensitive = sensitive,
         )
     }
 
     suspend fun replaceFrom(bundle: BackupBundle) = withIo {
+        val user = uid.value
         db.withTransaction {
-            db.entries().clear()
-            db.sales().clear()
-            db.cash().clear()
-            db.products().clear()
-            db.deletions().clear()
-            db.parties().clear()
-            db.parties().upsertAll(bundle.parties.map { it.toEntity() })
-            db.entries().upsertAll(bundle.entries.map { it.toEntity() })
-            db.cash().upsertAll(bundle.cash.map { it.toEntity() })
-            db.products().upsertAll(bundle.products.map { it.toEntity() })
-            db.sales().upsertAll(bundle.sales.map { it.toEntity() })
-            db.deletions().upsertAll(bundle.deletions.map { DeletionEntity(it.id, it.collection, it.deletedAt) })
+            db.entries().clear(user)
+            db.sales().clear(user)
+            db.cash().clear(user)
+            db.products().clear(user)
+            db.deletions().clear(user)
+            db.parties().clear(user)
+            db.parties().upsertAll(bundle.parties.map { it.toEntity().copy(ownerUid = user) })
+            db.entries().upsertAll(bundle.entries.map { it.toEntity().copy(ownerUid = user) })
+            db.cash().upsertAll(bundle.cash.map { it.toEntity().copy(ownerUid = user) })
+            db.products().upsertAll(bundle.products.map { it.toEntity().copy(ownerUid = user) })
+            db.sales().upsertAll(bundle.sales.map { it.toEntity().copy(ownerUid = user) })
+            db.deletions().upsertAll(bundle.deletions.map { DeletionEntity(it.id, it.collection, it.deletedAt, user) })
         }
         if (bundle.sensitive.isNotEmpty()) {
-            vault.sensitive().clear()
             bundle.sensitive.forEach { item ->
                 vault.sensitive().upsert(
                     SensitiveEntity(
@@ -219,46 +277,111 @@ class LedgerRepository(
                 )
             }
         }
+        changed()
     }
 
     suspend fun eraseBusinessData() = withIo {
-        val parties = db.parties().listAll()
-        val sensitive = vault.sensitive().listAll()
+        val user = uid.value
+        val parties = db.parties().listAll(user)
+        val entries = db.entries().listAll(user)
+        val cash = db.cash().listAll(user)
+        val products = db.products().listAll(user)
+        val sales = db.sales().listAll(user)
+        val now = System.currentTimeMillis()
+        val sensitive = parties.mapNotNull { vault.sensitive().get(it.id) }
         db.withTransaction {
-            db.entries().clear()
-            db.sales().clear()
-            db.cash().clear()
-            db.products().clear()
-            db.deletions().clear()
-            db.parties().clear()
+            parties.forEach { db.deletions().upsert(DeletionEntity(it.id, "parties", now, user)) }
+            entries.forEach { db.deletions().upsert(DeletionEntity(it.id, "entries", now, user)) }
+            cash.forEach { db.deletions().upsert(DeletionEntity(it.id, "cash", now, user)) }
+            products.forEach { db.deletions().upsert(DeletionEntity(it.id, "products", now, user)) }
+            sales.forEach { db.deletions().upsert(DeletionEntity(it.id, "sales", now, user)) }
+            db.entries().clear(user)
+            db.sales().clear(user)
+            db.cash().clear(user)
+            db.products().clear(user)
+            db.parties().clear(user)
         }
-        vault.sensitive().clear()
+        parties.forEach { vault.sensitive().delete(it.id) }
         parties.forEach { deleteFile(it.photoPath) }
         sensitive.forEach {
             deleteFile(it.facePhotoPath)
             deleteFile(it.nidPhotoPath)
         }
+        changed()
     }
 
-    suspend fun listParties() = withIo { db.parties().listAll() }
-    suspend fun listEntries() = withIo { db.entries().listAll() }
-    suspend fun listCash() = withIo { db.cash().listAll() }
-    suspend fun listProducts() = withIo { db.products().listAll() }
-    suspend fun listSales() = withIo { db.sales().listAll() }
-    suspend fun listDeletions() = withIo { db.deletions().listAll() }
+    suspend fun listParties() = withIo { db.parties().listAll(uid.value) }
+    suspend fun listEntries() = withIo { db.entries().listAll(uid.value) }
+    suspend fun listCash() = withIo { db.cash().listAll(uid.value) }
+    suspend fun listProducts() = withIo { db.products().listAll(uid.value) }
+    suspend fun listSales() = withIo { db.sales().listAll(uid.value) }
+    suspend fun listDeletions() = withIo { db.deletions().listAll(uid.value) }
 
-    suspend fun applyRemoteParty(party: PartyEntity) = saveParty(party)
-    suspend fun applyRemoteEntry(entry: EntryEntity) = saveEntry(entry)
-    suspend fun applyRemoteCash(entry: CashEntity) = saveCash(entry)
-    suspend fun applyRemoteProduct(product: ProductEntity) = saveProduct(product)
+    suspend fun applyRemoteParty(party: PartyEntity) = withIo {
+        db.parties().upsert(party.copy(ownerUid = uid.value))
+        db.deletions().delete(party.id, uid.value)
+    }
 
-    suspend fun applyRemoteDeletion(id: String, collection: String) = withIo {
+    suspend fun applyRemoteEntry(entry: EntryEntity) = withIo {
+        db.entries().upsert(entry.copy(ownerUid = uid.value))
+        db.deletions().delete(entry.id, uid.value)
+    }
+
+    suspend fun applyRemoteCash(entry: CashEntity) = withIo {
+        db.cash().upsert(entry.copy(ownerUid = uid.value))
+        db.deletions().delete(entry.id, uid.value)
+    }
+
+    suspend fun applyRemoteProduct(product: ProductEntity) = withIo {
+        db.products().upsert(product.copy(ownerUid = uid.value))
+        db.deletions().delete(product.id, uid.value)
+    }
+
+    suspend fun applyRemoteSale(sale: SaleEntity) = withIo {
+        db.sales().upsert(sale.copy(ownerUid = uid.value))
+        db.deletions().delete(sale.id, uid.value)
+    }
+
+    suspend fun applyRemoteDeletion(id: String, collection: String, deletedAt: Long) = withIo {
+        val user = uid.value
         when (collection) {
-            "parties" -> deleteParty(id)
-            "entries" -> db.entries().delete(id)
-            "cash" -> db.cash().delete(id)
-            "products" -> db.products().delete(id)
+            "parties" -> {
+                val entryIds = db.entries().idsForParty(id, user)
+                val party = db.parties().get(id, user)
+                entryIds.forEach { db.deletions().upsert(DeletionEntity(it, "entries", deletedAt, user)) }
+                db.deletions().upsert(DeletionEntity(id, "parties", deletedAt, user))
+                db.parties().delete(id, user)
+                party?.let { deleteFile(it.photoPath) }
+            }
+            "entries" -> {
+                db.entries().delete(id, user)
+                db.deletions().upsert(DeletionEntity(id, "entries", deletedAt, user))
+            }
+            "cash" -> {
+                db.cash().delete(id, user)
+                db.deletions().upsert(DeletionEntity(id, "cash", deletedAt, user))
+            }
+            "products" -> {
+                db.products().delete(id, user)
+                db.deletions().upsert(DeletionEntity(id, "products", deletedAt, user))
+            }
+            "sales" -> {
+                db.sales().delete(id, user)
+                db.deletions().upsert(DeletionEntity(id, "sales", deletedAt, user))
+            }
         }
+    }
+
+    private fun <T> scopedList(query: (String) -> Flow<List<T>>): Flow<List<T>> = uid.flatMapLatest { id ->
+        if (id.isBlank()) flowOf(emptyList()) else query(id)
+    }
+
+    private fun <T> scopedOne(query: (String) -> Flow<T?>): Flow<T?> = uid.flatMapLatest { id ->
+        if (id.isBlank()) flowOf(null) else query(id)
+    }
+
+    private fun changed() {
+        signals.poke()
     }
 
     private suspend fun <T> withIo(block: suspend () -> T): T = withContext(Dispatchers.IO) { block() }

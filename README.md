@@ -1,14 +1,22 @@
-# হিসাব খাতা / Hisab Khata
+# nSedo
 
-<p>
-  <a href="https://github.com/robinwebc/hisab-khata/releases/download/v1.0.0/HisabKhata.apk"><img alt="Download APK" src="https://img.shields.io/badge/Download-APK-2ea44f?style=for-the-badge&logo=android&logoColor=white"></a>
-</p>
+<table>
+  <tr>
+    <td valign="middle">
+      <a href="https://github.com/robinwebc/hisab-khata/releases/latest"><img alt="Download APK" src="https://img.shields.io/badge/Download-APK-0F6B56?style=for-the-badge&logo=android&logoColor=white"></a>
+      <br><br>
+      <strong><a href="https://github.com/robinwebc/hisab-khata/releases/latest">Download APK</a></strong> — latest nSedo release (<code>arm64-v8a</code> + <code>x86_64</code>)
+    </td>
+    <td width="28"></td>
+    <td valign="middle">
+      <img src="branding/download-qr.png" alt="Scan to download nSedo" width="220">
+    </td>
+  </tr>
+</table>
 
-**[Download APK](https://github.com/robinwebc/hisab-khata/releases/download/v1.0.0/HisabKhata.apk)** — Hisab Khata v1.0.0 (`arm64-v8a` + `x86_64`)
+দোকানের হিসাব। বাংলা আগে, ইংরেজি টগল আছে। Gmail দিয়ে ঢুকতে হয়। খদ্দের, বাকি, ক্যাশ, মাল ও দোকানের সেটিংস `users/{uid}/...` এ সেভ হয়। মুখের ছাপ ও এনআইডির ছবি শুধু ফোনে থাকে।
 
-ছোট দোকানের হিসাব-কিতাব। বাংলা আগে, ইংরেজি টগল আছে। নাম বদলাতে `app/src/main/res/values/strings.xml` ও `values-en/strings.xml`-এর `app_name` বদলান।
-
-A ledger for a small shop in Bangladesh. Bangla is the default language, with an English toggle. To rename the app, change `app_name` in `app/src/main/res/values/strings.xml` and `values-en/strings.xml`.
+A shop ledger. Bangla first, with an English toggle. Gmail sign-in is required. Customers, entries, cash, products and shop settings sync under `users/{uid}/...`. Face prints and NID photos stay on the device. Package name stays `bd.robin.hisabkhata`.
 
 Package: `bd.robin.hisabkhata`. minSdk 24. Kotlin, Jetpack Compose, Material 3.
 
@@ -30,15 +38,17 @@ echo "sdk.dir=$ANDROID_HOME" > local.properties
 
 The release APK includes `arm64-v8a` and `x86_64`. Add `armeabi-v7a` to `abiFilters` in `app/build.gradle.kts` if you still need 32-bit phones.
 
-## অতিথি মোড / Guest mode
+## Gmail ও সিঙ্ক / Gmail and sync
 
-Firebase ছাড়াই অ্যাপ চলে। লগইন স্ক্রিনে **অতিথি হিসেবে চালিয়ে যান / Continue offline as guest** চাপুন। হিসাব এই ফোনে Room ডাটাবেসে থাকে।
+অতিথি মোড নেই। প্রথমবার **Gmail দিয়ে প্রবেশ**। তারপর অ্যাপ খুললে **পাসকি / ফিঙ্গারপ্রিন্ট** (ফোনের পিনও চলে)। সেটিংসে বন্ধ করা যায়। **অন্য Gmail দিয়ে ঢুকুন** আলাদা অ্যাকাউন্টের হিসাব আনে।
 
-The app runs without Firebase. On the login screen choose **Continue offline as guest**. The ledger stays on the phone in Room.
+ক্লাউড পাথ: `users/{uid}/parties|entries|cash|products|sales` এবং `users/{uid}/profile/shop`। মুছে ফেলা নরম (`deleted: true`) — ডকুমেন্ট হার্ড ডিলিট হয় না। নতুন ফোনে সাইন-ইন করলে ক্লাউড থেকে ফিরে আসে। অফলাইন ক্যাশ চালু। বদলালে ও অ্যাপ খুললে WorkManager আবার চেষ্টা করে।
 
-## Firebase পরে যোগ করা / Add Firebase later
+There is no guest mode. The first open is **Continue with Gmail**. Later opens use device biometrics or the phone PIN. Cloud data lives under `users/{uid}/...` with soft-deletes. Rules are in `firestore.rules`.
 
-`app/google-services.json` এখন প্লেসহোল্ডার (`project_id`: `hisab-khata-placeholder`)। `gradle.properties`-এ `hisabkhata.firebase.configured=false`। এই অবস্থায় Gmail সাইন-ইন, OTP ও Firestore সিঙ্ক চালু হয় না। অ্যাপ বোঝায় এবং অতিথি মোডে চলতে থাকে।
+## Firebase
+
+প্রজেক্ট `hisab-khata-7114a`। `app/google-services.json` আসল কনফিগ। `hisabkhata.firebase.configured=true`।
 
 1. [Firebase console](https://console.firebase.google.com)-এ প্রজেক্ট খুলুন।
 2. Android অ্যাপ যোগ করুন, প্যাকেজ `bd.robin.hisabkhata`।

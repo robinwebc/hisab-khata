@@ -1,26 +1,52 @@
 {
   "project_info": {
-    "project_number": "123456789012",
-    "project_id": "hisab-khata-placeholder",
-    "storage_bucket": "hisab-khata-placeholder.appspot.com"
+    "project_number": "917749882596",
+    "project_id": "hisab-khata-7114a",
+    "storage_bucket": "hisab-khata-7114a.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:123456789012:android:0123456789abcdef",
+        "mobilesdk_app_id": "1:917749882596:android:2ace82fd5591fc352e96f1",
         "android_client_info": {
           "package_name": "bd.robin.hisabkhata"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "917749882596-3b7nea2qp28r1jh1tav2uc1tfppplaig.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "bd.robin.hisabkhata",
+            "certificate_hash": "3c3f25434017a9b05bb8bc206e5fa4ed1fd6a80f"
+          }
+        },
+        {
+          "client_id": "917749882596-d2t2vhnq6e78lota4bh1h2qvqt7dt2lj.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "bd.robin.hisabkhata",
+            "certificate_hash": "3a6a173f01059256be38b27709e3963d4a6a4b55"
+          }
+        },
+        {
+          "client_id": "917749882596-tij54hmdfqi1qa2rovcdf79voqs817s1.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
-          "current_key": "AIzaSyAPlaceholderKeyForLocalBuildsOnly000"
+          "current_key": "AIzaSyCqaMuzCqbZrykac-ZSuo4S9zLE3JO4ymU"
         }
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "917749882596-tij54hmdfqi1qa2rovcdf79voqs817s1.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

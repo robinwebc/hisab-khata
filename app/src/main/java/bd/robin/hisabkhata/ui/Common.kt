@@ -190,19 +190,26 @@ fun rememberBitmap(path: String?): android.graphics.Bitmap? {
 
 @Composable
 fun EmptyHint(text: String, modifier: Modifier = Modifier) {
-    Text(
-        text,
-        modifier = modifier.padding(24.dp),
-        style = MaterialTheme.typography.bodyLarge,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+    ) {
+        Text(
+            text,
+            modifier = Modifier.padding(22.dp),
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+    }
 }
 
 @Composable
 fun ToneCard(title: String, value: String, container: Color, content: Color, modifier: Modifier = Modifier) {
-    Surface(modifier = modifier, color = container, shape = RoundedCornerShape(20.dp)) {
-        Column(Modifier.padding(16.dp)) {
-            Text(title, color = content, style = MaterialTheme.typography.labelLarge)
+    Surface(modifier = modifier, color = container, shape = RoundedCornerShape(22.dp), shadowElevation = 1.dp) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+            Text(title, color = content.copy(alpha = 0.86f), style = MaterialTheme.typography.labelLarge)
             Text(value, color = content, style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }

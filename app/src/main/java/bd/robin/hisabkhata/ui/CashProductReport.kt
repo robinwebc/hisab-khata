@@ -23,6 +23,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -91,7 +92,8 @@ fun CashScreen(onOpen: (String) -> Unit) {
             LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 if (shown.isEmpty()) item { EmptyHint(stringResource(R.string.cash_empty)) }
                 items(shown, key = { it.id }) { row ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surface, shadowElevation = 1.dp, modifier = Modifier.fillMaxWidth()) {
+                    Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text(categoryLabel(row.category), style = MaterialTheme.typography.titleSmall)
                             Text(Dates.format(row.date, "bn") + if (row.note.isBlank()) "" else " · ${row.note}", style = MaterialTheme.typography.bodySmall)
@@ -100,6 +102,7 @@ fun CashScreen(onOpen: (String) -> Unit) {
                         IconButton(onClick = { scope.launch { container.repo.deleteCash(row.id) } }) {
                             Icon(Icons.Rounded.Delete, stringResource(R.string.delete))
                         }
+                    }
                     }
                 }
             }

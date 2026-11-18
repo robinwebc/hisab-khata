@@ -7,11 +7,13 @@ import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Inventory2
 import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -58,7 +60,10 @@ fun AppNav() {
     }
     Scaffold(bottomBar = {
         if (showBar) {
-            NavigationBar {
+            NavigationBar(
+                containerColor = MaterialTheme.colorScheme.surface,
+                tonalElevation = 3.dp,
+            ) {
                 tabs.forEach { tab ->
                     NavigationBarItem(
                         selected = route == tab.route,
@@ -77,6 +82,7 @@ fun AppNav() {
             composable("cash") { CashScreen { go(it) } }
             composable("products") { ProductsScreen { go(it) } }
             composable("more") { MoreScreen { go(it) } }
+            composable("share") { ShareAppScreen { nav.popBackStack() } }
             composable("profile") { ProfileScreen { nav.popBackStack() } }
             composable("reports") { ReportScreen { nav.popBackStack() } }
             composable("settings") { SettingsScreen({ go(it) }, { nav.popBackStack() }) }

@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
@@ -30,6 +32,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -220,15 +223,18 @@ fun DetailScreen(id: String, onOpen: (String) -> Unit, onBack: () -> Unit) {
                     BalanceTone.GIVE -> extra.give
                     BalanceTone.SETTLED -> MaterialTheme.colorScheme.onSurfaceVariant
                 }
-                Text(
-                    when (tone) {
-                        BalanceTone.GET -> stringResource(R.string.balance_get)
-                        BalanceTone.GIVE -> stringResource(R.string.balance_give)
-                        BalanceTone.SETTLED -> stringResource(R.string.balance_settled)
-                    } + " " + formatTaka(abs(balance)),
-                    color = color,
-                    style = MaterialTheme.typography.headlineSmall,
-                )
+                Surface(shape = androidx.compose.foundation.shape.RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+                    Text(
+                        when (tone) {
+                            BalanceTone.GET -> stringResource(R.string.balance_get)
+                            BalanceTone.GIVE -> stringResource(R.string.balance_give)
+                            BalanceTone.SETTLED -> stringResource(R.string.balance_settled)
+                        } + "  " + formatTaka(abs(balance)),
+                        color = color,
+                        style = MaterialTheme.typography.headlineSmall,
+                        modifier = Modifier.padding(16.dp),
+                    )
+                }
                 Text(stringResource(R.string.limit_total_label, formatTaka(limit)))
                 Text(
                     if (over) stringResource(R.string.limit_over, formatTaka(balance - limit))
@@ -545,12 +551,19 @@ private fun writeStatement(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SimpleBar(title: String, onBack: (() -> Unit)? = null) {
-    TopAppBar(
-        title = { Text(title, maxLines = 1) },
-        navigationIcon = {
-            if (onBack != null) IconButton(onClick = onBack) { Icon(Icons.Rounded.ArrowBack, stringResource(R.string.back)) }
-        },
-    )
+    Surface(color = MaterialTheme.colorScheme.surface, shadowElevation = 2.dp) {
+        Row(
+            Modifier.fillMaxWidth().padding(end = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (onBack != null) {
+                IconButton(onClick = onBack) { Icon(Icons.Rounded.ArrowBack, stringResource(R.string.back)) }
+            } else {
+                Spacer(Modifier.size(8.dp))
+            }
+            Text(title, style = MaterialTheme.typography.titleLarge, maxLines = 1, modifier = Modifier.padding(vertical = 14.dp))
+        }
+    }
 }
 
 @Composable

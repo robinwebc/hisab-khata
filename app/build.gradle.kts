@@ -24,8 +24,8 @@ android {
         applicationId = "bd.robin.hisabkhata"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.1.0"
         val configured = (project.findProperty("hisabkhata.firebase.configured") as String?) ?: "false"
         val webClient = ((project.findProperty("hisabkhata.webClientId") as String?) ?: "")
             .replace("\\", "")
@@ -139,6 +139,8 @@ dependencies {
     implementation(libs.googleid)
     implementation(libs.biometric)
     implementation(libs.exif)
+    implementation(libs.androidx.work)
+    implementation(libs.zxing.core)
     coreLibraryDesugaring(libs.desugar)
     testImplementation(libs.junit)
 }
