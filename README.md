@@ -20,6 +20,8 @@ A shop ledger. Bangla first, with an English toggle. Gmail sign-in is required. 
 
 Package: `bd.robin.hisabkhata`. minSdk 24. Kotlin, Jetpack Compose, Material 3.
 
+1.2.0 adds **দ্রুত বিক্রি** (barcode cart, slip OCR), an app passkey (4–6 digits, biometric shortcut), and automatic encrypted backup of records and documents to the signed-in Gmail account’s hidden Google Drive folder (`drive.appdata`). Face and NID files stay on the device unless the backup setting is turned on.
+
 ## চালানো / Run
 
 Android SDK লাগবে (`ANDROID_HOME`), JDK 17+।

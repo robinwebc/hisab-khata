@@ -28,6 +28,8 @@ google-services = "4.4.2"
 junit = "4.13.2"
 work = "2.10.0"
 zxing = "3.5.3"
+security = "1.1.0-alpha06"
+play-auth = "21.3.0"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "core" }
@@ -72,6 +74,8 @@ exif = { module = "androidx.exifinterface:exifinterface", version.ref = "exif" }
 junit = { module = "junit:junit", version.ref = "junit" }
 androidx-work = { module = "androidx.work:work-runtime-ktx", version.ref = "work" }
 zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
+androidx-security = { module = "androidx.security:security-crypto", version.ref = "security" }
+play-services-auth = { module = "com.google.android.gms:play-services-auth", version.ref = "play-auth" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

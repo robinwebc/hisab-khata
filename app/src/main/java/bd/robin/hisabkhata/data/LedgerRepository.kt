@@ -187,6 +187,108 @@ class LedgerRepository(
         null
     }
 
+    suspend fun checkout(lines: List<Pair<String, Int>>, partyId: String?, asCredit: Boolean): String? = withIo {
+        val user = uid.value
+        if (user.isBlank()) return@withIo "missing"
+        if (lines.isEmpty()) return@withIo "empty"
+        val now = System.currentTimeMillis()
+        val prepared = lines.map { (id, qty) ->
+            val product = db.products().get(id, user) ?: return@withIo "missing"
+            if (qty <= 0) return@withIo "qty"
+            if (product.stock < qty) return@withIo "stock"
+            product to qty
+        }
+        var total = 0L
+        val note = prepared.joinToString(", ") { (product, qty) -> "${product.name} x$qty" }
+        db.withTransaction {
+            prepared.forEach { (product, qty) ->
+                val line = product.price * qty
+                total += line
+                db.products().upsert(product.copy(stock = product.stock - qty, updatedAt = now, ownerUid = user))
+                db.sales().upsert(
+                    SaleEntity(
+                        id = UUID.randomUUID().toString(),
+                        productId = product.id,
+                        productName = product.name,
+                        qty = qty,
+                        unitPrice = product.price,
+                        amount = line,
+                        date = now,
+                        createdAt = now,
+                        ownerUid = user,
+                    ),
+                )
+            }
+            if (asCredit && !partyId.isNullOrBlank()) {
+                db.entries().upsert(
+                    EntryEntity(
+                        id = UUID.randomUUID().toString(),
+                        partyId = partyId,
+                        type = Kind.CREDIT,
+                        amount = total,
+                        note = note,
+                        date = Dates.startOfDay(now),
+                        createdAt = now,
+                        updatedAt = now,
+                        ownerUid = user,
+                    ),
+                )
+            } else if (total > 0) {
+                db.cash().upsert(
+                    CashEntity(
+                        id = UUID.randomUUID().toString(),
+                        type = Kind.INCOME,
+                        category = "sale",
+                        amount = total,
+                        note = note,
+                        date = Dates.startOfDay(now),
+                        createdAt = now,
+                        updatedAt = now,
+                        ownerUid = user,
+                    ),
+                )
+            }
+        }
+        changed()
+        null
+    }
+
+    suspend fun recordSlipSale(amount: Long, note: String, partyId: String?, asCredit: Boolean) = withIo {
+        val user = uid.value
+        if (user.isBlank() || amount <= 0) return@withIo
+        val now = System.currentTimeMillis()
+        if (asCredit && !partyId.isNullOrBlank()) {
+            db.entries().upsert(
+                EntryEntity(
+                    id = UUID.randomUUID().toString(),
+                    partyId = partyId,
+                    type = Kind.CREDIT,
+                    amount = amount,
+                    note = note,
+                    date = Dates.startOfDay(now),
+                    createdAt = now,
+                    updatedAt = now,
+                    ownerUid = user,
+                ),
+            )
+        } else {
+            db.cash().upsert(
+                CashEntity(
+                    id = UUID.randomUUID().toString(),
+                    type = Kind.INCOME,
+                    category = "sale",
+                    amount = amount,
+                    note = note,
+                    date = Dates.startOfDay(now),
+                    createdAt = now,
+                    updatedAt = now,
+                    ownerUid = user,
+                ),
+            )
+        }
+        changed()
+    }
+
     suspend fun saveSensitive(row: SensitiveEntity) = withIo { vault.sensitive().upsert(row) }
 
     suspend fun deleteFace(partyId: String) = withIo {

@@ -130,10 +130,32 @@ fun EntryScreen(partyId: String, initialType: String, entryId: String, onDone: (
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
                 Text(current.name, style = MaterialTheme.typography.titleMedium)
                 Row {
-                    FilterChip(type == Kind.CREDIT, { type = Kind.CREDIT }, { Text(stringResource(R.string.credit)) })
-                    FilterChip(type == Kind.PAYMENT, { type = Kind.PAYMENT }, { Text(stringResource(R.string.payment)) }, modifier = Modifier.padding(start = 8.dp))
+                    FilterChip(
+                        type == Kind.CREDIT,
+                        { type = Kind.CREDIT },
+                        { Text(stringResource(R.string.credit)) },
+                        colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = extra.softGive,
+                            selectedLabelColor = extra.give,
+                        ),
+                    )
+                    FilterChip(
+                        type == Kind.PAYMENT,
+                        { type = Kind.PAYMENT },
+                        { Text(stringResource(R.string.payment)) },
+                        modifier = Modifier.padding(start = 8.dp),
+                        colors = androidx.compose.material3.FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = extra.softGet,
+                            selectedLabelColor = extra.get,
+                        ),
+                    )
                 }
-                Text(formatTaka(amount), style = MaterialTheme.typography.headlineLarge, modifier = Modifier.padding(vertical = 8.dp).tag("entry_amount"))
+                Text(
+                    formatTaka(amount),
+                    color = if (type == Kind.CREDIT) extra.give else extra.get,
+                    style = MaterialTheme.typography.headlineLarge,
+                    modifier = Modifier.padding(vertical = 8.dp).tag("entry_amount"),
+                )
                 if (decision.kind != LimitKind.OK) {
                     val message = if (decision.kind == LimitKind.OVER_DAILY) {
                         stringResource(R.string.warning_daily, formatTaka(decision.used), formatTaka(decision.limit))

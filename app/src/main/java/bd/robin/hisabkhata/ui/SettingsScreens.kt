@@ -9,6 +9,7 @@ import androidx.biometric.BiometricManager
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
@@ -20,6 +21,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -43,13 +45,20 @@ import bd.robin.hisabkhata.BuildConfig
 import bd.robin.hisabkhata.R
 import bd.robin.hisabkhata.data.AppSettings
 import bd.robin.hisabkhata.data.Boot
+import bd.robin.hisabkhata.data.DriveResult
 import bd.robin.hisabkhata.data.Files
 import bd.robin.hisabkhata.data.FirebaseGate
 import bd.robin.hisabkhata.data.SyncOutcome
 import bd.robin.hisabkhata.logic.BackupBundle
 import bd.robin.hisabkhata.logic.BackupVersionException
 import bd.robin.hisabkhata.logic.Kind
-import bd.robin.hisabkhata.logic.PinHash
+import bd.robin.hisabkhata.ui.theme.BlindRecoveryHex
+import bd.robin.hisabkhata.ui.theme.BlindSellHex
+import bd.robin.hisabkhata.ui.theme.DefaultRecoveryHex
+import bd.robin.hisabkhata.ui.theme.DefaultSellHex
+import bd.robin.hisabkhata.ui.theme.RecoveryShades
+import bd.robin.hisabkhata.ui.theme.SellShades
+import bd.robin.hisabkhata.ui.theme.colorFromHex
 import bd.robin.hisabkhata.logic.ProfileBackup
 import bd.robin.hisabkhata.logic.dropDigit
 import bd.robin.hisabkhata.logic.pushDigit
@@ -357,6 +366,30 @@ fun SettingsScreen(onOpen: (String) -> Unit, onBack: () -> Unit) {
                     scope.launch { container.settings.update { it.copy(theme = Kind.THEME_DARK) } }
                 }, { Text(stringResource(R.string.theme_dark)) })
             }
+            Text(stringResource(R.string.color_title), style = MaterialTheme.typography.titleMedium, modifier = Modifier.tag("color_settings"))
+            Text(stringResource(R.string.color_help), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            FilterChip(settings.colorPreset == "blind", {
+                scope.launch {
+                    container.settings.update {
+                        it.copy(colorPreset = "blind", sellColor = BlindSellHex, recoveryColor = BlindRecoveryHex)
+                    }
+                }
+            }, { Text(stringResource(R.string.color_blind)) }, modifier = Modifier.tag("color_blind"))
+            FilterChip(settings.colorPreset == "default", {
+                scope.launch {
+                    container.settings.update {
+                        it.copy(colorPreset = "default", sellColor = DefaultSellHex, recoveryColor = DefaultRecoveryHex)
+                    }
+                }
+            }, { Text(stringResource(R.string.color_default)) })
+            Text(stringResource(R.string.color_sell), style = MaterialTheme.typography.titleSmall)
+            ColorSwatches(settings.sellColor, SellShades) { hex ->
+                scope.launch { container.settings.update { it.copy(sellColor = hex, colorPreset = "custom") } }
+            }
+            Text(stringResource(R.string.color_recovery), style = MaterialTheme.typography.titleSmall)
+            ColorSwatches(settings.recoveryColor, RecoveryShades) { hex ->
+                scope.launch { container.settings.update { it.copy(recoveryColor = hex, colorPreset = "custom") } }
+            }
             Text(stringResource(R.string.settings_limits), style = MaterialTheme.typography.titleMedium)
             OutlinedTextField(limit, { limit = it.filter { ch -> ch.isDigit() } }, modifier = Modifier.fillMaxWidth().tag("default_limit"), label = { Text(stringResource(R.string.default_limit)) }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -383,6 +416,50 @@ fun SettingsScreen(onOpen: (String) -> Unit, onBack: () -> Unit) {
                     context.toast(context.getString(R.string.saved))
                 }
             }
+            Text(stringResource(R.string.backup_title), style = MaterialTheme.typography.titleMedium)
+            Text(
+                if (settings.lastBackupAt > 0) stringResource(R.string.backup_last, java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT).format(java.util.Date(settings.lastBackupAt)))
+                else stringResource(R.string.backup_never),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            if (settings.lastBackupError.isNotBlank()) {
+                Text(settings.lastBackupError, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
+            Text(stringResource(R.string.backup_drive_help), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.backup_wifi), modifier = Modifier.weight(1f))
+                Switch(settings.backupWifiOnly, { scope.launch { container.settings.update { current -> current.copy(backupWifiOnly = it) } } })
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(stringResource(R.string.backup_sensitive_toggle))
+                    Text(stringResource(R.string.backup_sensitive_warn), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Switch(settings.backupIncludeSensitive, { scope.launch { container.settings.update { current -> current.copy(backupIncludeSensitive = it) } } }, modifier = Modifier.tag("backup_sensitive"))
+            }
+            BigButton(stringResource(R.string.backup_now), modifier = Modifier.tag("backup_now")) {
+                val activity = context as? android.app.Activity ?: return@BigButton
+                scope.launch {
+                    when (val gate = container.drive.ensureAccess(activity)) {
+                        DriveResult.NeedsConsent -> context.toast(context.getString(R.string.backup_consent))
+                        is DriveResult.Failed -> context.toast(gate.message)
+                        DriveResult.Ok -> when (val outcome = container.drive.backup()) {
+                            DriveResult.Ok -> context.toast(context.getString(R.string.backup_done_now))
+                            DriveResult.NeedsConsent -> context.toast(context.getString(R.string.backup_consent))
+                            is DriveResult.Failed -> context.toast(outcome.message)
+                        }
+                    }
+                }
+            }
+            BigOutlined(stringResource(R.string.backup_restore_now)) {
+                scope.launch {
+                    when (val outcome = container.drive.restore()) {
+                        DriveResult.Ok -> context.toast(context.getString(R.string.backup_restored_now))
+                        DriveResult.NeedsConsent -> context.toast(context.getString(R.string.backup_consent))
+                        is DriveResult.Failed -> context.toast(outcome.message)
+                    }
+                }
+            }
             Text(stringResource(R.string.security_title), style = MaterialTheme.typography.titleMedium)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
@@ -393,7 +470,17 @@ fun SettingsScreen(onOpen: (String) -> Unit, onBack: () -> Unit) {
                     scope.launch { container.settings.update { current -> current.copy(quickUnlockEnabled = it) } }
                 }, modifier = Modifier.tag("quick_unlock_switch"))
             }
-            BigButton(if (settings.pinHash.isBlank()) stringResource(R.string.pin_set) else stringResource(R.string.pin_change), modifier = Modifier.tag("open_pin")) { onOpen("pin") }
+            BigButton(if (container.passkey.has()) stringResource(R.string.pin_change) else stringResource(R.string.pin_set), modifier = Modifier.tag("open_pin")) { onOpen("pin") }
+            Text(stringResource(R.string.passkey_timeout), style = MaterialTheme.typography.titleSmall)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(0, 1, 5, 15).forEach { minutes ->
+                    FilterChip(
+                        selected = settings.passkeyTimeoutMin == minutes,
+                        onClick = { scope.launch { container.settings.update { it.copy(passkeyTimeoutMin = minutes) } } },
+                        label = { Text(if (minutes == 0) stringResource(R.string.passkey_now) else stringResource(R.string.passkey_minutes, minutes)) },
+                    )
+                }
+            }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.lock_on_leave), modifier = Modifier.weight(1f))
                 Switch(settings.lockOnBackground, { scope.launch { container.settings.update { current -> current.copy(lockOnBackground = it) } } })
@@ -405,6 +492,25 @@ fun SettingsScreen(onOpen: (String) -> Unit, onBack: () -> Unit) {
                     else scope.launch { container.settings.update { current -> current.copy(biometricEnabled = it) } }
                 })
             }
+        }
+    }
+}
+
+@Composable
+private fun ColorSwatches(selected: String, shades: List<String>, onPick: (String) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(vertical = 4.dp)) {
+        shades.forEach { hex ->
+            val tint = colorFromHex(hex)
+            Surface(
+                onClick = { onPick(hex) },
+                modifier = Modifier.size(40.dp).tag("swatch_$hex"),
+                shape = androidx.compose.foundation.shape.CircleShape,
+                color = tint,
+                border = androidx.compose.foundation.BorderStroke(
+                    if (selected.equals(hex, true)) 3.dp else 1.dp,
+                    if (selected.equals(hex, true)) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline,
+                ),
+            ) {}
         }
     }
 }
@@ -427,8 +533,8 @@ fun PinSetupScreen(onBack: () -> Unit) {
     var first by rememberSaveable { mutableStateOf("") }
     var digits by rememberSaveable { mutableStateOf("") }
     var message by rememberSaveable { mutableStateOf("") }
-    LaunchedEffect(settings?.pinHash) {
-        if (settings != null && step == "new" && first.isBlank() && settings.pinHash.isNotBlank() && digits.isBlank()) step = "old"
+    LaunchedEffect(Unit) {
+        if (step == "new" && first.isBlank() && container.passkey.has() && digits.isBlank()) step = "old"
     }
     val title = when (step) {
         "old" -> stringResource(R.string.pin_current)
@@ -451,7 +557,7 @@ fun PinSetupScreen(onBack: () -> Unit) {
                 }
                 when (step) {
                     "old" -> {
-                        val ok = settings != null && PinHash.matches(digits, settings.pinSalt, settings.pinHash)
+                        val ok = container.passkey.matches(digits)
                         if (!ok) message = context.getString(R.string.pin_wrong) else {
                             step = "new"
                             digits = ""
@@ -470,9 +576,8 @@ fun PinSetupScreen(onBack: () -> Unit) {
                             digits = ""
                         } else {
                             scope.launch {
-                                val salt = PinHash.newSalt()
-                                val hash = withContext(Dispatchers.Default) { PinHash.hash(digits, salt) }
-                                container.settings.update { it.copy(pinHash = hash, pinSalt = salt) }
+                                container.passkey.save(digits)
+                                container.settings.update { it.copy(pinHash = "", pinSalt = "") }
                                 container.session.unlock()
                                 context.toast(context.getString(R.string.saved))
                                 onBack()
@@ -481,10 +586,10 @@ fun PinSetupScreen(onBack: () -> Unit) {
                     }
                 }
             }
-            if (step == "new" && settings?.pinHash?.isNotBlank() == true) {
+            if (step == "new" && container.passkey.has()) {
                 TextButton(onClick = {
                     scope.launch {
-                        container.settings.update { it.copy(pinHash = "", pinSalt = "", biometricEnabled = false) }
+                        container.passkey.clear()
                         container.session.unlock()
                         onBack()
                     }

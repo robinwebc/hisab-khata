@@ -219,8 +219,8 @@ fun DetailScreen(id: String, onOpen: (String) -> Unit, onBack: () -> Unit) {
             }
             item {
                 val color = when (tone) {
-                    BalanceTone.GET -> extra.get
-                    BalanceTone.GIVE -> extra.give
+                    BalanceTone.GET -> extra.give
+                    BalanceTone.GIVE -> extra.get
                     BalanceTone.SETTLED -> MaterialTheme.colorScheme.onSurfaceVariant
                 }
                 Surface(shape = androidx.compose.foundation.shape.RoundedCornerShape(22.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
@@ -254,8 +254,8 @@ fun DetailScreen(id: String, onOpen: (String) -> Unit, onBack: () -> Unit) {
             }
             item {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ActionChip(stringResource(R.string.credit), "add_credit") { onOpen("entry/$id?type=credit") }
-                    ActionChip(stringResource(R.string.payment), "add_payment") { onOpen("entry/$id?type=payment") }
+                    ActionChip(stringResource(R.string.credit), "add_credit", extra.give) { onOpen("entry/$id?type=credit") }
+                    ActionChip(stringResource(R.string.payment), "add_payment", extra.get) { onOpen("entry/$id?type=payment") }
                     ActionChip(stringResource(R.string.remind), "remind") { remind = true }
                     ActionChip(stringResource(R.string.statement), "statement") { sharePdf() }
                     ActionChip(stringResource(R.string.verify), "verify") { onOpen("verify/$id") }
@@ -275,7 +275,11 @@ fun DetailScreen(id: String, onOpen: (String) -> Unit, onBack: () -> Unit) {
                         Text(if (entry.type == Kind.CREDIT) stringResource(R.string.credit) else stringResource(R.string.payment), style = MaterialTheme.typography.titleSmall)
                         Text(Dates.format(entry.date, lang) + if (entry.note.isBlank()) "" else " · ${entry.note}", style = MaterialTheme.typography.bodySmall)
                     }
-                    Text(formatTaka(entry.amount), style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        formatTaka(entry.amount),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = if (entry.type == Kind.CREDIT) extra.give else extra.get,
+                    )
                     IconButton(onClick = { onOpen("entry/$id?type=${entry.type}&entryId=${entry.id}") }) { Text(stringResource(R.string.edit)) }
                     IconButton(onClick = { deleteEntry = entry.id }) { Icon(Icons.Rounded.Delete, stringResource(R.string.delete)) }
                 }
@@ -334,8 +338,12 @@ fun DetailScreen(id: String, onOpen: (String) -> Unit, onBack: () -> Unit) {
 }
 
 @Composable
-private fun ActionChip(text: String, id: String, onClick: () -> Unit) {
-    androidx.compose.material3.Button(onClick = onClick, modifier = Modifier.tag(id)) { Text(text) }
+private fun ActionChip(text: String, id: String, tint: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.primary, onClick: () -> Unit) {
+    androidx.compose.material3.Button(
+        onClick = onClick,
+        modifier = Modifier.tag(id),
+        colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = tint, contentColor = androidx.compose.ui.graphics.Color.White),
+    ) { Text(text) }
 }
 
 @Composable

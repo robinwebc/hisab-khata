@@ -522,7 +522,7 @@ private fun ScannerScaffold(
 }
 
 @Composable
-private fun CameraPane(
+internal fun CameraPane(
     front: Boolean,
     analyzer: ImageAnalysis.Analyzer?,
     onReady: (ImageCapture) -> Unit,
@@ -558,7 +558,7 @@ private fun CameraPane(
     }
 }
 
-private fun takePicture(context: android.content.Context, capture: ImageCapture, onBitmap: (android.graphics.Bitmap) -> Unit, onError: () -> Unit) {
+internal fun takePicture(context: android.content.Context, capture: ImageCapture, onBitmap: (android.graphics.Bitmap) -> Unit, onError: () -> Unit) {
     val file = File(context.cacheDir, "shot_${System.currentTimeMillis()}.jpg")
     capture.takePicture(
         ImageCapture.OutputFileOptions.Builder(file).build(),
@@ -575,7 +575,7 @@ private fun takePicture(context: android.content.Context, capture: ImageCapture,
 }
 
 @OptIn(ExperimentalGetImage::class)
-private class BarcodeAnalyzer(val onCode: (String) -> Unit) : ImageAnalysis.Analyzer {
+internal class BarcodeAnalyzer(private val gapMs: Long = 1500, val onCode: (String) -> Unit) : ImageAnalysis.Analyzer {
     private val scanner = BarcodeScanning.getClient()
     private var last = ""
     private var lastAt = 0L
@@ -590,7 +590,7 @@ private class BarcodeAnalyzer(val onCode: (String) -> Unit) : ImageAnalysis.Anal
             .addOnSuccessListener { codes ->
                 val value = codes.firstNotNullOfOrNull { it.rawValue } ?: return@addOnSuccessListener
                 val now = System.currentTimeMillis()
-                if (value == last && now - lastAt < 1500) return@addOnSuccessListener
+                if (value == last && now - lastAt < gapMs) return@addOnSuccessListener
                 last = value
                 lastAt = now
                 onCode(value)

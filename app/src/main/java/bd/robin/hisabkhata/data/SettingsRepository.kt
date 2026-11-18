@@ -43,6 +43,15 @@ data class AppSettings(
     val lastSyncAt: Long = 0,
     val quickUnlockEnabled: Boolean = false,
     val profileUpdatedAt: Long = 0,
+    val passkeyTimeoutMin: Int = 1,
+    val lastBackupAt: Long = 0,
+    val lastBackupError: String = "",
+    val backupWifiOnly: Boolean = false,
+    val backupIncludeSensitive: Boolean = false,
+    val offerDriveRestore: Boolean = false,
+    val sellColor: String = "C62828",
+    val recoveryColor: String = "1B7F4A",
+    val colorPreset: String = "default",
 )
 
 sealed interface Boot {
@@ -96,6 +105,7 @@ class SettingsRepository(
             .putBoolean("hasPin", settings.pinHash.isNotBlank())
             .putBoolean("lockOnBackground", settings.lockOnBackground)
             .putBoolean("quickUnlock", settings.quickUnlockEnabled)
+            .putInt("passkeyTimeout", settings.passkeyTimeoutMin)
             .apply()
     }
 
@@ -142,6 +152,15 @@ class SettingsRepository(
         lastSyncAt = this[Keys.lastSyncAt] ?: 0L,
         quickUnlockEnabled = this[Keys.quickUnlock] ?: false,
         profileUpdatedAt = this[Keys.profileUpdatedAt] ?: 0L,
+        passkeyTimeoutMin = (this[Keys.passkeyTimeout] ?: 1L).toInt(),
+        lastBackupAt = this[Keys.lastBackupAt] ?: 0L,
+        lastBackupError = this[Keys.lastBackupError] ?: "",
+        backupWifiOnly = this[Keys.backupWifi] ?: false,
+        backupIncludeSensitive = this[Keys.backupSensitive] ?: false,
+        offerDriveRestore = this[Keys.offerRestore] ?: false,
+        sellColor = this[Keys.sellColor] ?: "C62828",
+        recoveryColor = this[Keys.recoveryColor] ?: "1B7F4A",
+        colorPreset = this[Keys.colorPreset] ?: "default",
     )
 
     private fun MutablePreferences.write(settings: AppSettings) {
@@ -168,6 +187,15 @@ class SettingsRepository(
         this[Keys.lastSyncAt] = settings.lastSyncAt
         this[Keys.quickUnlock] = settings.quickUnlockEnabled
         this[Keys.profileUpdatedAt] = settings.profileUpdatedAt
+        this[Keys.passkeyTimeout] = settings.passkeyTimeoutMin.toLong()
+        this[Keys.lastBackupAt] = settings.lastBackupAt
+        this[Keys.lastBackupError] = settings.lastBackupError
+        this[Keys.backupWifi] = settings.backupWifiOnly
+        this[Keys.backupSensitive] = settings.backupIncludeSensitive
+        this[Keys.offerRestore] = settings.offerDriveRestore
+        this[Keys.sellColor] = settings.sellColor
+        this[Keys.recoveryColor] = settings.recoveryColor
+        this[Keys.colorPreset] = settings.colorPreset
     }
 
     private object Keys {
@@ -194,6 +222,15 @@ class SettingsRepository(
         val lastSyncAt = longPreferencesKey("lastSyncAt")
         val quickUnlock = booleanPreferencesKey("quickUnlock")
         val profileUpdatedAt = longPreferencesKey("profileUpdatedAt")
+        val passkeyTimeout = longPreferencesKey("passkeyTimeoutMin")
+        val lastBackupAt = longPreferencesKey("lastBackupAt")
+        val lastBackupError = stringPreferencesKey("lastBackupError")
+        val backupWifi = booleanPreferencesKey("backupWifiOnly")
+        val backupSensitive = booleanPreferencesKey("backupIncludeSensitive")
+        val offerRestore = booleanPreferencesKey("offerDriveRestore")
+        val sellColor = stringPreferencesKey("sellColor")
+        val recoveryColor = stringPreferencesKey("recoveryColor")
+        val colorPreset = stringPreferencesKey("colorPreset")
     }
 
     companion object {

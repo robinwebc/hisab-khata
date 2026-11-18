@@ -23,6 +23,10 @@ class Session {
         deviceUnlocked.value = false
         pinUnlocked.value = false
     }
+
+    fun lockPin() {
+        pinUnlocked.value = false
+    }
 }
 
 class AppContainer(val app: Application) {
@@ -35,7 +39,10 @@ class AppContainer(val app: Application) {
     val repo = LedgerRepository(db, vault, app, signals)
     val faces by lazy { FaceEngine(app) }
     val auth = AuthGateway(app)
+    val passkey = PasskeyStore(app)
     val sync = SyncRepository(app, repo, settings)
+    val drive = DriveBackup(app, repo, settings)
     val account = AccountGate(auth, repo, settings, session, sync)
     val syncCenter = SyncCenter(app, sync, signals, scope)
+    val driveCenter = DriveCenter(app, settings, signals, scope)
 }

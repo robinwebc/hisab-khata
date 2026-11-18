@@ -388,18 +388,30 @@ fun ReportScreen(onBack: () -> Unit) {
                 TextButton(onClick = { if (monthly) month = month.plusMonths(1) else day = day.plusDays(1) }) { Text("›") }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ToneCard(stringResource(R.string.report_outstanding) + " " + stringResource(R.string.home_get), formatTaka(get), extra.softGet, extra.get, Modifier.weight(1f))
-                ToneCard(stringResource(R.string.home_give), formatTaka(give), extra.softGive, extra.give, Modifier.weight(1f))
+                ToneCard(stringResource(R.string.report_outstanding) + " " + stringResource(R.string.home_get), formatTaka(get), extra.softGive, extra.give, Modifier.weight(1f))
+                ToneCard(stringResource(R.string.home_give), formatTaka(give), extra.softGet, extra.get, Modifier.weight(1f))
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ToneCard(if (monthly) stringResource(R.string.report_credit) else stringResource(R.string.report_in), formatTaka(if (monthly) credit else income), extra.softAmber, extra.amber, Modifier.weight(1f))
-                ToneCard(if (monthly) stringResource(R.string.report_payment) else stringResource(R.string.report_out), formatTaka(if (monthly) payment else expense), extra.softGive, extra.give, Modifier.weight(1f))
+                ToneCard(
+                    if (monthly) stringResource(R.string.report_credit) else stringResource(R.string.report_in),
+                    formatTaka(if (monthly) credit else income),
+                    if (monthly) extra.softGive else extra.softGet,
+                    if (monthly) extra.give else extra.get,
+                    Modifier.weight(1f),
+                )
+                ToneCard(
+                    if (monthly) stringResource(R.string.report_payment) else stringResource(R.string.report_out),
+                    formatTaka(if (monthly) payment else expense),
+                    if (monthly) extra.softGet else extra.softGive,
+                    if (monthly) extra.get else extra.give,
+                    Modifier.weight(1f),
+                )
             }
             Text(stringResource(R.string.report_net) + " " + formatTaka(income - expense), style = MaterialTheme.typography.titleMedium)
             if (chart.isEmpty()) EmptyHint(stringResource(R.string.report_empty))
             else {
                 Text(if (monthly) stringResource(R.string.credit) + " / " + stringResource(R.string.payment) else stringResource(R.string.report_in) + " / " + stringResource(R.string.report_out))
-                GroupedBars(chart, if (monthly) extra.give else extra.get, if (monthly) extra.get else extra.amber)
+                GroupedBars(chart, if (monthly) extra.give else extra.get, if (monthly) extra.get else extra.give)
             }
             Text(stringResource(R.string.report_expense_breakdown), style = MaterialTheme.typography.titleMedium)
             if (categories.isEmpty()) Text(stringResource(R.string.report_empty))

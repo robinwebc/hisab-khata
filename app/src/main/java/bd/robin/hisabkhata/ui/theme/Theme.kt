@@ -38,6 +38,33 @@ data class ExtraColors(
     val tile: Color,
 )
 
+/** বাকি / বিক্রি — money given on credit. */
+const val DefaultSellHex = "C62828"
+
+/** জমা / আদায় — money received. */
+const val DefaultRecoveryHex = "1B7F4A"
+
+val SellShades = listOf("C62828", "B71C1C", "E65100", "AD1457", "6A1B9A")
+val RecoveryShades = listOf("1B7F4A", "2E7D32", "00695C", "1565C0", "00838F")
+const val BlindSellHex = "D55E00"
+const val BlindRecoveryHex = "0072B2"
+
+fun colorFromHex(hex: String?, fallback: String = DefaultSellHex): Color {
+    val clean = hex?.trim()?.removePrefix("#").orEmpty().ifBlank { fallback }
+    val value = clean.toLongOrNull(16) ?: fallback.toLong(16)
+    return Color(0xFF000000 or value)
+}
+
+private fun Color.soften(dark: Boolean): Color {
+    val base = if (dark) Color(0xFF14211C) else Color.White
+    val amount = if (dark) 0.28f else 0.16f
+    return Color(
+        red = base.red * (1f - amount) + red * amount,
+        green = base.green * (1f - amount) + green * amount,
+        blue = base.blue * (1f - amount) + blue * amount,
+    )
+}
+
 val LocalExtra = staticCompositionLocalOf {
     ExtraColors(NsBrand, Clay, Amber, Color(0xFFE5F3EE), Color(0xFFF8E8E6), Color(0xFFF8F1E4), Color.White)
 }
@@ -81,7 +108,12 @@ private val NsShapes = Shapes(
 )
 
 @Composable
-fun HisabTheme(dark: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
+fun HisabTheme(
+    dark: Boolean = isSystemInDarkTheme(),
+    sell: Color = colorFromHex(DefaultSellHex),
+    recovery: Color = colorFromHex(DefaultRecoveryHex),
+    content: @Composable () -> Unit,
+) {
     val scheme = if (dark) {
         darkColorScheme(
             primary = Color(0xFF8ED4BE),
@@ -124,27 +156,15 @@ fun HisabTheme(dark: Boolean = isSystemInDarkTheme(), content: @Composable () ->
             outlineVariant = Color(0xFFE4EEE9),
         )
     }
-    val extra = if (dark) {
-        ExtraColors(
-            get = Color(0xFF8ED4BE),
-            give = Color(0xFFFFB4A8),
-            amber = Color(0xFFE7C27A),
-            softGet = Color(0xFF12352C),
-            softGive = Color(0xFF3A221F),
-            softAmber = Color(0xFF3A311C),
-            tile = Color(0xFF1B2B25),
-        )
-    } else {
-        ExtraColors(
-            get = NsBrand,
-            give = Clay,
-            amber = Amber,
-            softGet = Color(0xFFE5F3EE),
-            softGive = Color(0xFFF8E8E6),
-            softAmber = Color(0xFFF8F1E4),
-            tile = Color.White,
-        )
-    }
+    val extra = ExtraColors(
+        get = recovery,
+        give = sell,
+        amber = if (dark) Color(0xFFE7C27A) else Amber,
+        softGet = recovery.soften(dark),
+        softGive = sell.soften(dark),
+        softAmber = if (dark) Color(0xFF3A311C) else Color(0xFFF8F1E4),
+        tile = if (dark) Color(0xFF1B2B25) else Color.White,
+    )
     androidx.compose.runtime.CompositionLocalProvider(LocalExtra provides extra) {
         MaterialTheme(colorScheme = scheme, typography = type(), shapes = NsShapes, content = content)
     }

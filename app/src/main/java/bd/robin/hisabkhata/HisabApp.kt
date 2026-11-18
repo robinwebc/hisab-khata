@@ -37,11 +37,33 @@ class HisabApp : Application() {
         if (!current.startsWith(lang)) {
             AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags(lang))
         }
+        container.scope.launch {
+            val current = container.settings.current()
+            if (current.pinHash.isNotBlank()) {
+                container.passkey.migrate(current.pinHash, current.pinSalt)
+                container.settings.update(notify = false) { it.copy(pinHash = "", pinSalt = "") }
+            }
+        }
         ProcessLifecycleOwner.get().lifecycle.addObserver(object : DefaultLifecycleObserver {
             override fun onStop(owner: LifecycleOwner) {
                 val boot = getSharedPreferences("boot", MODE_PRIVATE)
-                val pin = boot.getBoolean("hasPin", false) && boot.getBoolean("lockOnBackground", true)
-                if (boot.getBoolean("quickUnlock", false) || pin) {
+                boot.edit().putLong("backgroundAt", System.currentTimeMillis()).apply()
+                val timeout = boot.getInt("passkeyTimeout", 1)
+                if (boot.getBoolean("lockOnBackground", true) && timeout <= 0 && container.passkey.has()) {
+                    container.session.lockPin()
+                }
+                if (boot.getBoolean("quickUnlock", false) && timeout <= 0) {
+                    container.session.lock()
+                }
+            }
+
+            override fun onStart(owner: LifecycleOwner) {
+                val boot = getSharedPreferences("boot", MODE_PRIVATE)
+                if (!boot.getBoolean("lockOnBackground", true)) return
+                val timeout = boot.getInt("passkeyTimeout", 1)
+                if (timeout <= 0) return
+                val at = boot.getLong("backgroundAt", 0L)
+                if (at > 0 && System.currentTimeMillis() - at >= timeout * 60_000L) {
                     container.session.lock()
                 }
             }

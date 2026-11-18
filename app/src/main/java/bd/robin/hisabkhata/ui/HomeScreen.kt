@@ -46,6 +46,7 @@ import bd.robin.hisabkhata.logic.balanceTone
 import bd.robin.hisabkhata.logic.formatTaka
 import bd.robin.hisabkhata.ui.theme.LocalExtra
 import bd.robin.hisabkhata.ui.theme.NsBrand
+import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalTime
 import java.time.ZoneId
@@ -114,19 +115,12 @@ fun HomeScreen(onOpen: (String) -> Unit) {
                 Text(stringResource(R.string.home_due_count, duePeople), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
             }
             SyncLine(phase, settings?.lastSyncAt ?: 0L, settings?.language ?: "bn")
+            BigButton(stringResource(R.string.quick_sell), modifier = Modifier.padding(top = 10.dp).tag("quick_sell_home")) { onOpen("quicksell") }
         }
         item {
-            Surface(shape = RoundedCornerShape(28.dp), color = NsBrand, shadowElevation = 6.dp, modifier = Modifier.fillMaxWidth()) {
-                Row(Modifier.padding(6.dp)) {
-                    Column(Modifier.weight(1f).padding(14.dp)) {
-                        Text(stringResource(R.string.home_get), color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.labelLarge)
-                        Text(formatTaka(get), color = androidx.compose.ui.graphics.Color.White, style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                    Column(Modifier.weight(1f).padding(14.dp)) {
-                        Text(stringResource(R.string.home_give), color = androidx.compose.ui.graphics.Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.labelLarge)
-                        Text(formatTaka(give), color = androidx.compose.ui.graphics.Color.White, style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                }
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                ToneCard(stringResource(R.string.home_get), formatTaka(get), extra.softGive, extra.give, Modifier.weight(1f).tag("total_get"))
+                ToneCard(stringResource(R.string.home_give), formatTaka(give), extra.softGet, extra.get, Modifier.weight(1f).tag("total_give"))
             }
         }
         item {
@@ -138,8 +132,8 @@ fun HomeScreen(onOpen: (String) -> Unit) {
         item {
             val actions = listOf(
                 QuickAction(stringResource(R.string.home_add_customer), Icons.Rounded.PersonAdd, "home_add_customer", "edit?id=&face=0"),
-                QuickAction(stringResource(R.string.home_credit), Icons.Rounded.South, "home_credit", "pick/credit"),
-                QuickAction(stringResource(R.string.home_payment), Icons.Rounded.Payments, "home_payment", "pick/payment"),
+                QuickAction(stringResource(R.string.home_credit), Icons.Rounded.South, "home_credit", "pick/credit", "sell"),
+                QuickAction(stringResource(R.string.home_payment), Icons.Rounded.Payments, "home_payment", "pick/payment", "recovery"),
                 QuickAction(stringResource(R.string.home_cash), Icons.Rounded.AccountBalanceWallet, "home_cash", "cash"),
                 QuickAction(stringResource(R.string.home_scan_slip), Icons.Rounded.DocumentScanner, "home_scan_slip", "scan/slip"),
                 QuickAction(stringResource(R.string.home_scan_barcode), Icons.Rounded.QrCodeScanner, "home_scan_barcode", "scan/barcode"),
@@ -158,8 +152,13 @@ fun HomeScreen(onOpen: (String) -> Unit) {
                                 shadowElevation = 1.dp,
                             ) {
                                 Column(Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Icon(action.icon, null, tint = NsBrand)
-                                    Text(action.title, style = MaterialTheme.typography.labelMedium, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp))
+                                    val tint = when (action.money) {
+                                        "sell" -> extra.give
+                                        "recovery" -> extra.get
+                                        else -> NsBrand
+                                    }
+                                    Icon(action.icon, null, tint = tint)
+                                    Text(action.title, color = tint, style = MaterialTheme.typography.labelMedium, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp))
                                 }
                             }
                         }
@@ -214,9 +213,29 @@ fun HomeScreen(onOpen: (String) -> Unit) {
             }
         }
     }
+    if (settings?.offerDriveRestore == true) {
+        val restoreContext = androidx.compose.ui.platform.LocalContext.current
+        val restoreScope = androidx.compose.runtime.rememberCoroutineScope()
+        ConfirmDialog(
+            title = stringResource(R.string.backup_offer_title),
+            body = stringResource(R.string.backup_offer_body),
+            confirm = stringResource(R.string.backup_restore_now),
+            onConfirm = {
+                val activity = restoreContext as? android.app.Activity ?: return@ConfirmDialog
+                restoreScope.launch {
+                    val gate = container.drive.ensureAccess(activity)
+                    if (gate is bd.robin.hisabkhata.data.DriveResult.Ok) container.drive.restore()
+                    container.settings.update(notify = false) { it.copy(offerDriveRestore = false) }
+                }
+            },
+            onDismiss = {
+                restoreScope.launch { container.settings.update(notify = false) { it.copy(offerDriveRestore = false) } }
+            },
+        )
+    }
 }
 
-private data class QuickAction(val title: String, val icon: ImageVector, val tag: String, val route: String)
+private data class QuickAction(val title: String, val icon: ImageVector, val tag: String, val route: String, val money: String = "")
 
 @Composable
 private fun SyncLine(phase: SyncPhase, lastSyncAt: Long, lang: String) {
@@ -243,8 +262,8 @@ private fun syncClock(millis: Long, lang: String): String {
 fun PartyRow(name: String, phone: String, photo: String?, tone: BalanceTone, balance: Long, onClick: () -> Unit) {
     val extra = LocalExtra.current
     val color = when (tone) {
-        BalanceTone.GET -> extra.get
-        BalanceTone.GIVE -> extra.give
+        BalanceTone.GET -> extra.give
+        BalanceTone.GIVE -> extra.get
         BalanceTone.SETTLED -> MaterialTheme.colorScheme.onSurfaceVariant
     }
     val word = when (tone) {

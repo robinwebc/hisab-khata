@@ -413,6 +413,8 @@ class AccountGate(
         }
         session.unlock()
         sync.sync()
+        val empty = repo.listParties().isEmpty() && repo.listProducts().isEmpty() && repo.listEntries().isEmpty()
+        if (empty) settings.update(notify = false) { it.copy(offerDriveRestore = true) }
     }
 
     suspend fun signOut() {

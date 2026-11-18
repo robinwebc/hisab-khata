@@ -32,9 +32,12 @@ import bd.robin.hisabkhata.ui.AppNav
 import bd.robin.hisabkhata.ui.LocalContainer
 import bd.robin.hisabkhata.ui.LockScreen
 import bd.robin.hisabkhata.ui.LoginScreen
+import bd.robin.hisabkhata.ui.PasskeySetupScreen
 import bd.robin.hisabkhata.ui.QuickUnlockScreen
 import bd.robin.hisabkhata.ui.theme.HisabTheme
 import bd.robin.hisabkhata.ui.theme.NsInk
+import bd.robin.hisabkhata.ui.theme.DefaultRecoveryHex
+import bd.robin.hisabkhata.ui.theme.colorFromHex
 
 class MainActivity : AppCompatActivity() {
     override fun attachBaseContext(newBase: Context) {
@@ -53,14 +56,19 @@ class MainActivity : AppCompatActivity() {
             val pinUnlocked by container.session.pinUnlocked.collectAsStateWithLifecycle()
             val settings = (boot as? Boot.Ready)?.settings
             val signedIn = settings?.session == Kind.SESSION_GOOGLE && settings.accountUid.isNotBlank()
-            HisabTheme(dark = settings?.theme == Kind.THEME_DARK) {
+            HisabTheme(
+                dark = settings?.theme == Kind.THEME_DARK,
+                sell = colorFromHex(settings?.sellColor),
+                recovery = colorFromHex(settings?.recoveryColor, DefaultRecoveryHex),
+            ) {
                 CompositionLocalProvider(LocalContainer provides container) {
                     Box(Modifier.semantics { testTagsAsResourceId = true }.fillMaxSize()) {
                         when {
                             settings == null -> Splash()
                             !signedIn -> LoginScreen()
+                            !container.passkey.has() -> PasskeySetupScreen()
                             settings.quickUnlockEnabled && !deviceUnlocked -> QuickUnlockScreen()
-                            settings.pinHash.isNotBlank() && !pinUnlocked -> LockScreen()
+                            !pinUnlocked -> LockScreen()
                             else -> AppNav()
                         }
                     }

@@ -37,7 +37,6 @@ import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import bd.robin.hisabkhata.R
 import bd.robin.hisabkhata.data.Boot
-import bd.robin.hisabkhata.logic.PinHash
 import bd.robin.hisabkhata.ui.theme.Leaf
 import kotlinx.coroutines.launch
 
@@ -67,7 +66,7 @@ fun LockScreen() {
             return
         }
         if (value.length < 4) return
-        if (PinHash.matches(value, current.pinSalt, current.pinHash)) {
+        if (container.passkey.matches(value)) {
             container.session.unlock()
         } else {
             fails += 1
@@ -142,9 +141,19 @@ fun LockScreen() {
             confirm = stringResource(R.string.lock_reset_confirm),
             onConfirm = {
                 confirmReset = false
+                val activity = context as? android.app.Activity ?: return@ConfirmDialog
                 scope.launch {
-                    container.settings.update { it.copy(pinHash = "", pinSalt = "", biometricEnabled = false) }
-                    container.session.unlock()
+                    runCatching { container.auth.signInWithGoogle(activity) }
+                        .onSuccess { profile ->
+                            val uid = container.settings.current().accountUid
+                            if (profile.uid != uid) {
+                                context.toast(context.getString(R.string.passkey_wrong_account))
+                            } else {
+                                container.passkey.clear()
+                                container.session.lock()
+                            }
+                        }
+                        .onFailure { context.toast(context.getString(R.string.google_failed)) }
                 }
             },
             onDismiss = { confirmReset = false },

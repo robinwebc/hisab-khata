@@ -6,6 +6,7 @@ import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Inventory2
 import androidx.compose.material.icons.rounded.MoreHoriz
+import androidx.compose.material.icons.rounded.QrCodeScanner
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -37,6 +38,7 @@ fun AppNav() {
     val route = back?.destination?.route.orEmpty()
     val tabs = listOf(
         Tab("home", R.string.nav_home, Icons.Rounded.Home, "nav_home"),
+        Tab("quicksell", R.string.nav_sell, Icons.Rounded.QrCodeScanner, "nav_sell"),
         Tab("parties", R.string.nav_parties, Icons.Rounded.Groups, "nav_parties"),
         Tab("cash", R.string.nav_cash, Icons.Rounded.AccountBalanceWallet, "nav_cash"),
         Tab("products", R.string.nav_products, Icons.Rounded.Inventory2, "nav_products"),
@@ -78,6 +80,7 @@ fun AppNav() {
     }) { padding ->
         NavHost(nav, startDestination = "home", modifier = Modifier.padding(padding)) {
             composable("home") { HomeScreen { go(it) } }
+            composable("quicksell") { QuickSellScreen { nav.popBackStack() } }
             composable("parties") { PartiesScreen { go(it) } }
             composable("cash") { CashScreen { go(it) } }
             composable("products") { ProductsScreen { go(it) } }
