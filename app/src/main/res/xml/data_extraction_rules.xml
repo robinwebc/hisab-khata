@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="database" path="vault.db" />
+        <exclude domain="database" path="vault.db-wal" />
+        <exclude domain="database" path="vault.db-shm" />
+        <exclude domain="file" path="faces" />
+        <exclude domain="file" path="nid" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="database" path="vault.db" />
+        <exclude domain="database" path="vault.db-wal" />
+        <exclude domain="database" path="vault.db-shm" />
+        <exclude domain="file" path="faces" />
+        <exclude domain="file" path="nid" />
+    </device-transfer>
+</data-extraction-rules>

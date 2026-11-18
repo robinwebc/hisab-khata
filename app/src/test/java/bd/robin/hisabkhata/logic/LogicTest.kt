@@ -1,0 +1,177 @@
+package bd.robin.hisabkhata.logic
+
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import java.time.LocalDate
+
+class LogicTest {
+    @Test
+    fun creditOverLimitWarnsAndBlockStopsSave() {
+        val warned = checkLimit(
+            LimitInput(
+                isCredit = true,
+                amount = 1500,
+                currentBalance = 0,
+                todayCredit = 0,
+                creditLimit = 1000,
+                dailyLimit = null,
+                mode = Kind.MODE_WARN,
+            ),
+        )
+        assertEquals(LimitKind.OVER_TOTAL, warned.kind)
+        assertTrue(warned.warned)
+        assertFalse(warned.blocked)
+
+        val blocked = warned.copy(mode = Kind.MODE_BLOCK)
+        assertTrue(blocked.blocked)
+    }
+
+    @Test
+    fun paymentDoesNotTripCreditLimit() {
+        val decision = checkLimit(
+            LimitInput(
+                isCredit = false,
+                amount = 5000,
+                currentBalance = 900,
+                todayCredit = 900,
+                creditLimit = 1000,
+                dailyLimit = 1000,
+                mode = Kind.MODE_BLOCK,
+            ),
+        )
+        assertEquals(LimitKind.OK, decision.kind)
+    }
+
+    @Test
+    fun dailyLimitUsesOnlyTodaysCredit() {
+        val decision = checkLimit(
+            LimitInput(
+                isCredit = true,
+                amount = 400,
+                currentBalance = 400,
+                todayCredit = 400,
+                creditLimit = 5000,
+                dailyLimit = 500,
+                mode = Kind.MODE_WARN,
+            ),
+        )
+        assertEquals(LimitKind.OVER_DAILY, decision.kind)
+        assertEquals(400L, decision.used)
+    }
+
+    @Test
+    fun editingDoesNotDoubleCountTheOldCredit() {
+        val decision = checkLimit(
+            LimitInput(
+                isCredit = true,
+                amount = 800,
+                currentBalance = 800,
+                todayCredit = 800,
+                creditLimit = 1000,
+                dailyLimit = 1000,
+                mode = Kind.MODE_BLOCK,
+                previousCredit = 800,
+                previousCreditSameDay = 800,
+            ),
+        )
+        assertEquals(LimitKind.OK, decision.kind)
+    }
+
+    @Test
+    fun remainingLimitNeverGoesNegative() {
+        assertEquals(0L, remainingLimit(1500, 1000))
+        assertEquals(400L, remainingLimit(600, 1000))
+    }
+
+    @Test
+    fun slipParserReadsTotalDateAndName() {
+        val draft = SlipParser.parse(SlipParser.SAMPLE)
+        assertEquals(400L, draft.amount)
+        assertEquals(LocalDate.of(2026, 11, 18), draft.day)
+        assertEquals("Karim Mia", draft.name)
+    }
+
+    @Test
+    fun slipParserReadsBanglaDigits() {
+        val draft = SlipParser.parse("নাম: করিম মিয়া\nতারিখ: ১৮/১১/২০২৬\nমোট: ১,২৫০")
+        assertEquals(1250L, draft.amount)
+        assertEquals(LocalDate.of(2026, 11, 18), draft.day)
+        assertEquals("করিম মিয়া", draft.name)
+    }
+
+    @Test
+    fun phoneNormalizesLocalAndInternational() {
+        assertEquals("8801712345678", normalizeBdPhone("01712-345678"))
+        assertEquals("+8801712345678", toE164Bd("01712345678"))
+        assertEquals("01712345678", localBdPhone("+8801712345678"))
+        assertNull(toE164Bd("12345"))
+    }
+
+    @Test
+    fun nidMaskKeepsLastFour() {
+        assertEquals("•••••••••1234", maskNid("1234567891234"))
+    }
+
+    @Test
+    fun identicalFaceVectorsMatchAndOppositesDoNot() {
+        val probe = FaceMath.l2normalize(floatArrayOf(1f, 0f, 0f, 0f))
+        val hit = bestFaceMatch(probe, listOf("a" to probe.copyOf()), FaceMath.TFLITE_THRESHOLD)
+        assertNotNull(hit)
+        assertEquals("a", hit!!.partyId)
+        val other = FaceMath.l2normalize(floatArrayOf(0f, 1f, 0f, 0f))
+        assertNull(bestFaceMatch(probe, listOf("b" to other), FaceMath.TFLITE_THRESHOLD))
+    }
+
+    @Test
+    fun cloudPartyMapHasNoSensitiveKeys() {
+        val keys = partyCloudMap(
+            id = "1",
+            type = Kind.CUSTOMER,
+            name = "করিম",
+            phone = "017",
+            address = "",
+            note = "",
+            useCustomLimit = false,
+            creditLimit = 0,
+            useDailyLimit = false,
+            dailyLimit = 0,
+            verifyStatus = Kind.VERIFY_NONE,
+            createdAt = 1,
+            updatedAt = 1,
+        ).keys
+        assertFalse(keys.any { it.contains("face") || it.contains("nid") || it.contains("photo") || it.contains("embedding") })
+    }
+
+    @Test
+    fun backupRoundTripKeepsBanglaName() {
+        val json = Json { ignoreUnknownKeys = true }
+        val bundle = BackupBundle(
+            exportedAt = 5,
+            parties = listOf(PartyBackup(id = "a", type = Kind.CUSTOMER, name = "করিম")),
+        )
+        val back = json.decodeFromString<BackupBundle>(json.encodeToString(bundle))
+        assertEquals("করিম", back.parties.first().name)
+        assertTrue(back.sensitive.isEmpty())
+    }
+
+    @Test
+    fun pinHashRejectsADifferentPin() {
+        val salt = PinHash.newSalt()
+        val hash = PinHash.hash("1234", salt)
+        assertTrue(PinHash.matches("1234", salt, hash))
+        assertFalse(PinHash.matches("9999", salt, hash))
+    }
+
+    @Test
+    fun customerDueIsGetAndSupplierDueIsGive() {
+        assertEquals(BalanceTone.GET, balanceTone(Kind.CUSTOMER, 100))
+        assertEquals(BalanceTone.GIVE, balanceTone(Kind.SUPPLIER, 100))
+        assertEquals(BalanceTone.SETTLED, balanceTone(Kind.CUSTOMER, 0))
+    }
+}
