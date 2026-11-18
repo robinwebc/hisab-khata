@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.res.Configuration
 import android.os.Bundle
 import androidx.activity.compose.setContent
+import androidx.lifecycle.lifecycleScope
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.background
@@ -27,8 +28,10 @@ import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import bd.robin.hisabkhata.data.Boot
+import bd.robin.hisabkhata.data.SampleSeeder
 import bd.robin.hisabkhata.logic.Kind
 import bd.robin.hisabkhata.ui.AppNav
+import bd.robin.hisabkhata.ui.ShotNav
 import bd.robin.hisabkhata.ui.LocalContainer
 import bd.robin.hisabkhata.ui.LockScreen
 import bd.robin.hisabkhata.ui.LoginScreen
@@ -38,6 +41,7 @@ import bd.robin.hisabkhata.ui.theme.HisabTheme
 import bd.robin.hisabkhata.ui.theme.NsInk
 import bd.robin.hisabkhata.ui.theme.DefaultRecoveryHex
 import bd.robin.hisabkhata.ui.theme.colorFromHex
+import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
     override fun attachBaseContext(newBase: Context) {
@@ -50,6 +54,38 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val container = appContainer
+        if (BuildConfig.DEBUG) {
+            val shot = intent?.getStringExtra("nsedo_shot")
+            if (!shot.isNullOrBlank()) {
+                ShotNav.route = when (shot) {
+                    "sell", "sheet" -> "quicksell"
+                    "face" -> "scan/face?partyId="
+                    "register" -> "scan/face?partyId=sample-karim"
+                    "backup" -> "settings"
+                    "labels" -> "labels"
+                    else -> "home"
+                }
+                if (!container.passkey.has()) container.passkey.save("1234")
+                container.session.unlock()
+                lifecycleScope.launch {
+                    container.settings.update(notify = false) {
+                        it.copy(
+                            session = Kind.SESSION_GOOGLE,
+                            accountUid = "shot-user",
+                            accountEmail = "shop@nsedo.app",
+                            accountName = "nSedo",
+                            shopName = "নসেদো স্টোর",
+                            quickUnlockEnabled = false,
+                            lockOnBackground = false,
+                            backupIncludeSensitive = true,
+                            language = "bn",
+                        )
+                    }
+                    container.repo.bind("shot-user")
+                    SampleSeeder.seed(container.repo)
+                }
+            }
+        }
         setContent {
             val boot by container.settings.boot.collectAsStateWithLifecycle()
             val deviceUnlocked by container.session.deviceUnlocked.collectAsStateWithLifecycle()

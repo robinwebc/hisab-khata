@@ -1,5 +1,6 @@
 package bd.robin.hisabkhata.ui
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -43,6 +45,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -50,6 +53,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import bd.robin.hisabkhata.R
+import bd.robin.hisabkhata.data.BarcodeArt
 import bd.robin.hisabkhata.data.Boot
 import bd.robin.hisabkhata.data.CashEntity
 import bd.robin.hisabkhata.data.ProductEntity
@@ -251,6 +255,7 @@ fun ProductsScreen(onOpen: (String) -> Unit) {
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 8.dp)) {
                 BigButton(stringResource(R.string.add_product), Modifier.weight(1f)) { onOpen("product/edit?id=") }
+                BigButton(stringResource(R.string.label_title), Modifier.weight(1f).tag("open_labels")) { onOpen("labels") }
                 BigButton(stringResource(R.string.barcode_title), Modifier.weight(1f).tag("open_barcode")) { onOpen("scan/barcode") }
             }
         }
@@ -336,6 +341,19 @@ fun ProductEditScreen(id: String, onDone: () -> Unit, onBack: () -> Unit) {
             OutlinedTextField(stock, { stock = it.filter { ch -> ch.isDigit() } }, modifier = Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.product_stock)) }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
             OutlinedTextField(barcode, { barcode = it }, modifier = Modifier.fillMaxWidth().tag("product_barcode"), label = { Text(stringResource(R.string.product_barcode)) })
             OutlinedTextField(note, { note = it }, modifier = Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.party_note)) })
+            if (barcode.isNotBlank() && name.isNotBlank()) {
+                val preview = BarcodeArt.label(name, formatTaka(price.toLongOrNull() ?: 0), barcode)
+                if (preview != null) {
+                    Image(
+                        preview.asImageBitmap(),
+                        stringResource(R.string.label_title),
+                        modifier = Modifier.fillMaxWidth().height(140.dp).tag("product_label"),
+                    )
+                    BigOutlined(stringResource(R.string.label_print), modifier = Modifier.tag("product_print")) {
+                        BarcodeArt.share(context, preview, "label.png")
+                    }
+                }
+            }
             BigButton(stringResource(R.string.product_save), modifier = Modifier.tag("product_save")) {
                 if (name.isBlank()) {
                     context.toast(need)

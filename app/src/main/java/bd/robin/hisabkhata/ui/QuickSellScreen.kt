@@ -1,54 +1,75 @@
 package bd.robin.hisabkhata.ui
 
+import android.Manifest
+import android.hardware.camera2.CameraManager
 import android.media.AudioManager
 import android.media.ToneGenerator
 import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.ImageCapture
+import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import bd.robin.hisabkhata.BuildConfig
 import bd.robin.hisabkhata.R
+import bd.robin.hisabkhata.data.BarcodeArt
 import bd.robin.hisabkhata.data.Files
 import bd.robin.hisabkhata.data.MlKit
 import bd.robin.hisabkhata.data.ProductEntity
 import bd.robin.hisabkhata.logic.SlipParser
 import bd.robin.hisabkhata.logic.formatTaka
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
 
-private data class CartLine(val id: String, val name: String, val price: Long, var qty: Int)
+private data class CartLine(val id: String, val name: String, val price: Long, val qty: Int)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -61,53 +82,135 @@ fun QuickSellScreen(onBack: () -> Unit) {
     var unknown by remember { mutableStateOf<String?>(null) }
     var name by remember { mutableStateOf("") }
     var price by remember { mutableStateOf("") }
+    var stockCount by remember { mutableStateOf("10") }
+    var typed by remember { mutableStateOf("") }
     var checkout by remember { mutableStateOf(false) }
     var credit by remember { mutableStateOf(false) }
     var partyId by remember { mutableStateOf("") }
     var capture by remember { mutableStateOf<ImageCapture?>(null) }
     var message by remember { mutableStateOf("") }
+    var granted by remember { mutableStateOf(false) }
+    val hasCamera = remember {
+        runCatching {
+            context.getSystemService(CameraManager::class.java).cameraIdList.isNotEmpty()
+        }.getOrDefault(false)
+    }
+    var cameraOk by remember { mutableStateOf(true) }
     val saved = stringResource(R.string.quick_sell_saved)
     val stock = stringResource(R.string.product_not_enough)
-    val analyzer = remember {
-        BarcodeAnalyzer(gapMs = 700) { code ->
-            scope.launch {
-                val product = container.repo.productByBarcode(code)
-                if (product == null) {
-                    unknown = code
-                    name = ""
-                    price = ""
-                } else {
-                    val line = cart.find { it.id == product.id }
-                    if (line == null) cart.add(CartLine(product.id, product.name, product.price, 1))
-                    else line.qty += 1
-                    beep(context)
-                }
+    val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted = it }
+    LaunchedEffect(Unit) { permission.launch(Manifest.permission.CAMERA) }
+    fun addProduct(product: ProductEntity) {
+        val index = cart.indexOfFirst { it.id == product.id }
+        if (index < 0) cart.add(CartLine(product.id, product.name, product.price, 1))
+        else cart[index] = cart[index].copy(qty = cart[index].qty + 1)
+        beep(context)
+    }
+    fun lookup(code: String) {
+        val clean = code.trim()
+        if (clean.isBlank()) return
+        scope.launch {
+            val product = container.repo.productByBarcode(clean)
+            if (product == null) {
+                unknown = clean
+                name = ""
+                price = ""
+                stockCount = "10"
+            } else {
+                addProduct(product)
+                typed = ""
             }
         }
     }
+    val analyzer = remember {
+        BarcodeAnalyzer(gapMs = 700) { code -> lookup(code) }
+    }
+    LaunchedEffect(Unit) {
+        if (!BuildConfig.DEBUG) return@LaunchedEffect
+        val shot = context.findActivity()?.intent?.getStringExtra("nsedo_shot") ?: return@LaunchedEffect
+        if (shot != "sell" && shot != "sheet") return@LaunchedEffect
+        repeat(25) {
+            val rice = container.repo.productByBarcode("8941100000017")
+            val oil = container.repo.productByBarcode("8941100000024")
+            if (rice != null) {
+                if (cart.none { it.id == rice.id }) cart.add(CartLine(rice.id, rice.name, rice.price, 1))
+                if (oil != null && cart.none { it.id == oil.id }) cart.add(CartLine(oil.id, oil.name, oil.price, 2))
+                if (shot == "sheet") {
+                    unknown = "8941100099994"
+                    name = "চিনি (কেজি)"
+                    price = "120"
+                    stockCount = "15"
+                }
+                return@LaunchedEffect
+            }
+            delay(200)
+        }
+    }
     val total = cart.sumOf { it.price * it.qty }
+    val sheetScroll = rememberScrollState()
+    val labelPreview = if (unknown != null && name.isNotBlank() && price.isNotBlank()) {
+        BarcodeArt.label(name, formatTaka(price.toLongOrNull() ?: 0), unknown.orEmpty())
+    } else {
+        null
+    }
     Scaffold(topBar = { SimpleBar(stringResource(R.string.quick_sell), onBack) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            CameraPane(
-                front = false,
-                analyzer = analyzer,
-                onReady = { capture = it },
-                onError = { message = it },
-                modifier = Modifier.fillMaxWidth().weight(1f),
-            )
-            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(stringResource(R.string.quick_sell_total, formatTaka(total)), style = MaterialTheme.typography.titleLarge)
+            if (granted && hasCamera && cameraOk) {
+                CameraPane(
+                    front = false,
+                    analyzer = analyzer,
+                    onReady = { capture = it },
+                    onError = {
+                        message = it
+                        cameraOk = false
+                    },
+                    modifier = Modifier.fillMaxWidth().height(220.dp).tag("sell_camera"),
+                )
+            } else {
+                Box(
+                    Modifier.fillMaxWidth().height(220.dp).background(Color.Black).tag("sell_camera"),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        stringResource(if (granted) R.string.barcode_hint else R.string.scan_camera_denied),
+                        color = Color.White,
+                        modifier = Modifier.padding(16.dp),
+                    )
+                }
+            }
+            Column(Modifier.padding(12.dp).weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(R.string.quick_sell_total, formatTaka(total)), style = MaterialTheme.typography.titleLarge, modifier = Modifier.tag("sell_total"))
                 if (message.isNotBlank()) Text(message, color = MaterialTheme.colorScheme.error)
-                LazyColumn(Modifier.heightIn(max = 160.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    items(cart, key = { it.id }) { line ->
-                        Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth()) {
-                            Row(Modifier.padding(10.dp)) {
-                                Text("${line.name} × ${line.qty}", modifier = Modifier.weight(1f))
-                                Text(formatTaka(line.price * line.qty))
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.tag("sell_cart")) {
+                    cart.forEach { line ->
+                        Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.fillMaxWidth().tag("cart_${line.id}")) {
+                            Row(Modifier.padding(horizontal = 10.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(line.name)
+                                    Text(formatTaka(line.price * line.qty), style = MaterialTheme.typography.bodySmall)
+                                }
+                                TextButton(onClick = {
+                                    val index = cart.indexOfFirst { it.id == line.id }
+                                    if (index >= 0 && cart[index].qty > 1) cart[index] = cart[index].copy(qty = cart[index].qty - 1)
+                                }) { Text("−") }
+                                Text("${line.qty}")
+                                TextButton(onClick = {
+                                    val index = cart.indexOfFirst { it.id == line.id }
+                                    if (index >= 0) cart[index] = cart[index].copy(qty = cart[index].qty + 1)
+                                }) { Text("+") }
+                                TextButton(onClick = { cart.removeAll { it.id == line.id } }) { Text(stringResource(R.string.quick_sell_remove)) }
                             }
                         }
                     }
                 }
+                OutlinedTextField(
+                    typed,
+                    { typed = it },
+                    modifier = Modifier.fillMaxWidth().tag("sell_code"),
+                    label = { Text(stringResource(R.string.quick_sell_code)) },
+                    singleLine = true,
+                )
+                BigButton(stringResource(R.string.quick_sell_add), modifier = Modifier.tag("sell_add")) { lookup(typed) }
                 BigButton(stringResource(R.string.quick_sell_done), enabled = cart.isNotEmpty(), modifier = Modifier.tag("quick_sell_done")) { checkout = true }
                 BigOutlined(stringResource(R.string.quick_sell_slip), modifier = Modifier.tag("quick_sell_slip")) {
                     val shot = capture ?: return@BigOutlined
@@ -129,22 +232,32 @@ fun QuickSellScreen(onBack: () -> Unit) {
             }
         }
     }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     unknown?.let { code ->
-        ModalBottomSheet(onDismissRequest = { unknown = null }) {
-            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        ModalBottomSheet(onDismissRequest = { unknown = null }, sheetState = sheetState) {
+            Column(Modifier.padding(20.dp).verticalScroll(sheetScroll).tag("new_product_sheet"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(stringResource(R.string.quick_sell_unknown, code), style = MaterialTheme.typography.titleMedium)
                 OutlinedTextField(name, { name = it }, modifier = Modifier.fillMaxWidth().tag("quick_name"), label = { Text(stringResource(R.string.product_name)) })
-                OutlinedTextField(price, { price = it.filter { ch -> ch.isDigit() } }, modifier = Modifier.fillMaxWidth().tag("quick_price"), label = { Text(stringResource(R.string.product_price)) })
-                BigButton(stringResource(R.string.save)) {
+                OutlinedTextField(price, { price = it.filter { ch -> ch.isDigit() } }, modifier = Modifier.fillMaxWidth().tag("quick_price"), label = { Text(stringResource(R.string.product_price)) }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                OutlinedTextField(stockCount, { stockCount = it.filter { ch -> ch.isDigit() } }, modifier = Modifier.fillMaxWidth().tag("quick_stock"), label = { Text(stringResource(R.string.product_stock)) }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                labelPreview?.let { preview ->
+                    Image(preview.asImageBitmap(), stringResource(R.string.label_title), modifier = Modifier.fillMaxWidth().height(120.dp).tag("quick_label"))
+                }
+                BigButton(stringResource(R.string.save), modifier = Modifier.tag("quick_save")) {
                     val taka = price.toLongOrNull() ?: return@BigButton
                     if (name.isBlank()) return@BigButton
                     scope.launch {
                         val now = System.currentTimeMillis()
-                        val product = ProductEntity(UUID.randomUUID().toString(), name.trim(), taka, 100, code, "", now, now)
+                        val product = ProductEntity(UUID.randomUUID().toString(), name.trim(), taka, stockCount.toIntOrNull() ?: 10, code, "", now, now)
                         container.repo.saveProduct(product)
                         cart.add(CartLine(product.id, product.name, product.price, 1))
                         beep(context)
                         unknown = null
+                    }
+                }
+                if (labelPreview != null) {
+                    BigOutlined(stringResource(R.string.label_print), modifier = Modifier.tag("quick_print")) {
+                        BarcodeArt.share(context, labelPreview, "label-$code.png")
                     }
                 }
             }

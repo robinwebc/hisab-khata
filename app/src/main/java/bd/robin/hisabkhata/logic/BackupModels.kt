@@ -97,7 +97,12 @@ data class SensitiveBackup(
     val faceConsentAt: Long? = null,
     val nidNumber: String = "",
     val nidName: String = "",
+    val facePhotoRel: String = "",
+    val nidPhotoRel: String = "",
 )
+
+@Serializable
+data class SensitivePack(val rows: List<SensitiveBackup> = emptyList())
 
 @Serializable
 data class BackupBundle(

@@ -149,6 +149,49 @@ class LogicTest {
     }
 
     @Test
+    fun sensitiveDriveBackupIsOnByDefaultAndSeparateFromTheLedger() {
+        assertTrue(DrivePolicy.INCLUDE_SENSITIVE_BY_DEFAULT)
+        assertTrue(DrivePolicy.uploadsSensitive(true))
+        assertFalse(DrivePolicy.uploadsSensitive(false))
+        assertEquals("nsedo-ledger.enc", DrivePolicy.LEDGER)
+        assertEquals("nsedo-sensitive.enc", DrivePolicy.SENSITIVE)
+        assertFalse(DrivePolicy.backupFileIncluded("faces/karim.jpg", includeSensitive = false))
+        assertFalse(DrivePolicy.backupFileIncluded("nid/karim.jpg", includeSensitive = false))
+        assertTrue(DrivePolicy.backupFileIncluded("faces/karim.jpg", includeSensitive = true))
+        assertTrue(DrivePolicy.backupFileIncluded("slips/slip.jpg", includeSensitive = false))
+    }
+
+    @Test
+    fun aesGcmSealRoundTripsAndHidesThePlaintext() {
+        val key = ByteArray(32) { (it * 7).toByte() }
+        val plain = "NID 1234567890123 face".toByteArray()
+        val sealed = BackupSeal.seal(key, plain)
+        assertFalse(String(sealed).contains("1234567890123"))
+        assertEquals("NID 1234567890123 face", BackupSeal.open(key, sealed).decodeToString())
+    }
+
+    @Test
+    fun ledgerCopyDropsNidAndFace() {
+        val json = Json { encodeDefaults = true }
+        val full = BackupBundle(
+            sensitive = listOf(
+                SensitiveBackup(partyId = "p", nidNumber = "1234567890123", faceEmbeddingB64 = "abc=="),
+            ),
+        )
+        val ledger = full.copy(sensitive = emptyList())
+        val text = json.encodeToString(ledger)
+        assertFalse(text.contains("1234567890123"))
+        assertFalse(text.contains("abc=="))
+    }
+
+    @Test
+    fun code128LabelEncodesAProductBarcode() {
+        val matrix = BarcodeBits.code128("8941100000017")
+        assertTrue(matrix.width > 20)
+        assertTrue(matrix.height > 10)
+    }
+
+    @Test
     fun backupRoundTripKeepsBanglaName() {
         val json = Json { ignoreUnknownKeys = true }
         val bundle = BackupBundle(

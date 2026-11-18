@@ -227,7 +227,7 @@ private fun KhataTools(onOpen: (String) -> Unit) {
             FeatureGlyph(Icons.Rounded.Backup, stringResource(R.string.tool_backup), Color(0xFF2E7D32), "tool_backup") { onOpen("settings") }
             FeatureGlyph(Icons.Rounded.Sms, stringResource(R.string.tool_sms), HeaderRed, "tool_sms") { onOpen("parties") }
             FeatureGlyph(Icons.Rounded.AccountBalanceWallet, stringResource(R.string.tool_cashbox), Color(0xFFFB8C00), "tool_cash") { onOpen("cash") }
-            Box(Modifier.size(52.dp))
+            FeatureGlyph(Icons.Rounded.Face, stringResource(R.string.tool_face), Color(0xFF5C4B8A), "tool_face") { onOpen("scan/face?partyId=") }
         }
     }
 }

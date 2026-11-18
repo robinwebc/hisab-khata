@@ -68,6 +68,15 @@ object PendingCapture {
     }
 }
 
+fun android.content.Context.findActivity(): android.app.Activity? {
+    var current = this
+    while (current is android.content.ContextWrapper) {
+        if (current is android.app.Activity) return current
+        current = current.baseContext
+    }
+    return null
+}
+
 fun Modifier.tag(id: String): Modifier = semantics {
     testTagsAsResourceId = true
     testTag = id
