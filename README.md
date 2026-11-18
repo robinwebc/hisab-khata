@@ -1,5 +1,11 @@
 # হিসাব খাতা / Hisab Khata
 
+<p>
+  <a href="https://github.com/robinwebc/hisab-khata/releases/download/v1.0.0/HisabKhata.apk"><img alt="Download APK" src="https://img.shields.io/badge/Download-APK-2ea44f?style=for-the-badge&logo=android&logoColor=white"></a>
+</p>
+
+**[Download APK](https://github.com/robinwebc/hisab-khata/releases/download/v1.0.0/HisabKhata.apk)** — Hisab Khata v1.0.0 (`arm64-v8a` + `x86_64`)
+
 ছোট দোকানের হিসাব-কিতাব। বাংলা আগে, ইংরেজি টগল আছে। নাম বদলাতে `app/src/main/res/values/strings.xml` ও `values-en/strings.xml`-এর `app_name` বদলান।
 
 A ledger for a small shop in Bangladesh. Bangla is the default language, with an English toggle. To rename the app, change `app_name` in `app/src/main/res/values/strings.xml` and `values-en/strings.xml`.
