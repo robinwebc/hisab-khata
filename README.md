@@ -20,7 +20,7 @@ A shop ledger. Bangla first, with an English toggle. Gmail sign-in is required. 
 
 Package: `bd.robin.hisabkhata`. minSdk 24. Kotlin, Jetpack Compose, Material 3.
 
-1.2.0 adds **দ্রুত বিক্রি** (barcode cart, slip OCR), an app passkey (4–6 digits, biometric shortcut), and automatic encrypted backup of records and documents to the signed-in Gmail account’s hidden Google Drive folder (`drive.appdata`). Face and NID files stay on the device unless the backup setting is turned on.
+1.3.0 uses a red header, khata list, cashbox, quick-sell QR and stock tabs. বাকি / পাবো is red and জমা / দেবো is green, and those colours can still be changed in settings. Quick sell, the app passkey, Firestore sync and encrypted Drive backup stay. nSedo does not collect payments.
 
 ## চালানো / Run
 
