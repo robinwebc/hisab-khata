@@ -15,6 +15,7 @@ import androidx.compose.material3.Text
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -27,6 +28,10 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import bd.robin.hisabkhata.R
+
+internal object ShotNav {
+    var route: String? = null
+}
 
 private data class Tab(val route: String, val label: Int, val icon: ImageVector, val tag: String)
 
@@ -58,6 +63,11 @@ fun AppNav() {
             nav.navigate(clean)
         }
     }
+    LaunchedEffect(Unit) {
+        val dest = ShotNav.route ?: return@LaunchedEffect
+        ShotNav.route = null
+        if (dest != "home") go(dest)
+    }
     Scaffold(bottomBar = {
         if (showBar) {
             NavigationBar(
@@ -85,6 +95,7 @@ fun AppNav() {
             composable("parties") { PartiesScreen({ go(it) }, { nav.popBackStack() }) }
             composable("cash") { CashScreen { go(it) } }
             composable("products") { ProductsScreen { go(it) } }
+            composable("labels") { LabelsScreen { nav.popBackStack() } }
             composable("more") { MoreScreen { go(it) } }
             composable("share") { ShareAppScreen { nav.popBackStack() } }
             composable("profile") { ProfileScreen { nav.popBackStack() } }

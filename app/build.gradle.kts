@@ -24,8 +24,8 @@ android {
         applicationId = "bd.robin.hisabkhata"
         minSdk = 24
         targetSdk = 35
-        versionCode = 4
-        versionName = "1.3.0"
+        versionCode = 5
+        versionName = "1.4.0"
         val configured = (project.findProperty("hisabkhata.firebase.configured") as String?) ?: "false"
         val webClient = ((project.findProperty("hisabkhata.webClientId") as String?) ?: "")
             .replace("\\", "")

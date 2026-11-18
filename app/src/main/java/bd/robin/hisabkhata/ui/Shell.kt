@@ -146,6 +146,7 @@ fun QrHubScreen(onOpen: (String) -> Unit) {
             Text(stringResource(R.string.qr_hub_title), style = MaterialTheme.typography.headlineSmall)
             Text(stringResource(R.string.qr_hub_body), color = MaterialTheme.colorScheme.onSurfaceVariant)
             BigButton(stringResource(R.string.quick_sell), modifier = Modifier.tag("qr_quick_sell")) { onOpen("quicksell") }
+            BigOutlined(stringResource(R.string.face_scan_title), modifier = Modifier.tag("qr_face")) { onOpen("scan/face?partyId=") }
             BigOutlined(stringResource(R.string.share_app), modifier = Modifier.tag("qr_share")) { onOpen("share") }
         }
     }

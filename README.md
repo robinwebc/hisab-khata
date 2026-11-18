@@ -14,13 +14,13 @@
   </tr>
 </table>
 
-দোকানের হিসাব। বাংলা আগে, ইংরেজি টগল আছে। Gmail দিয়ে ঢুকতে হয়। খদ্দের, বাকি, ক্যাশ, মাল ও দোকানের সেটিংস `users/{uid}/...` এ সেভ হয়। মুখের ছাপ ও এনআইডির ছবি শুধু ফোনে থাকে।
+দোকানের হিসাব। বাংলা আগে, ইংরেজি টগল আছে। Gmail দিয়ে ঢুকতে হয়। খদ্দের, বাকি, ক্যাশ, মাল ও দোকানের সেটিংস `users/{uid}/...` এ সেভ হয়। মুখের ছাপ ও এনআইডির ছবি Firestore-এ যায় না। দৈনিক Drive ব্যাকআপে সেগুলো ফোনে AES-GCM দিয়ে এনক্রিপ্ট হয়ে শুধু লুকানো `appDataFolder`-এ যায়। ডিফল্টে চালু। সেটিংস থেকে বন্ধ বা মুছে ফেলা যায়।
 
-A shop ledger. Bangla first, with an English toggle. Gmail sign-in is required. Customers, entries, cash, products and shop settings sync under `users/{uid}/...`. Face prints and NID photos stay on the device. Package name stays `bd.robin.hisabkhata`.
+A shop ledger. Bangla first, with an English toggle. Gmail sign-in is required. Customers, entries, cash, products and shop settings sync under `users/{uid}/...`. Face prints and NID photos are never written to Firestore. The daily Drive backup encrypts them on the phone with AES-GCM and stores them only in the hidden `appDataFolder`. That backup is on by default, with a switch and a delete action in settings. Package name stays `bd.robin.hisabkhata`.
 
 Package: `bd.robin.hisabkhata`. minSdk 24. Kotlin, Jetpack Compose, Material 3.
 
-1.3.0 uses a red header, khata list, cashbox, quick-sell QR and stock tabs. বাকি / পাবো is red and জমা / দেবো is green, and those colours can still be changed in settings. Quick sell, the app passkey, Firestore sync and encrypted Drive backup stay. nSedo does not collect payments.
+1.4.0 adds scan-to-sell (camera, cart, new-product sheet, barcode labels), on-device face search, and a daily encrypted Drive backup that includes NID and face data by default. বাকি / পাবো is red and জমা / দেবো is green. nSedo does not collect payments.
 
 ## চালানো / Run
 
@@ -77,9 +77,9 @@ service cloud.firestore {
 }
 ```
 
-সিঙ্ক মুখের এমবেডিং, মুখের ছবি, এনআইডি নম্বর বা এনআইডি ছবি পাঠায় না। খদ্দেরের OTP যাচাই আলাদা Firebase অ্যাপে হয়, যাতে দোকানদারের Gmail সেশন বদলে না যায়।
+সিঙ্ক মুখের এমবেডিং, মুখের ছবি, এনআইডি নম্বর বা এনআইডি ছবি পাঠায় না। সেগুলো শুধু এনক্রিপ্ট করা Drive `appDataFolder` ফাইলে যায় (`nsedo-sensitive.enc`), চাবি আলাদা Firestore প্রোফাইলে থাকে যাতে নতুন ফোনে একই Gmail দিয়ে খোলা যায়। চাবির ডকুমেন্টে মুখ বা এনআইডি থাকে না। খদ্দেরের OTP যাচাই আলাদা Firebase অ্যাপে হয়।
 
-Sync never uploads face embeddings, face photos, NID numbers, or NID photos. Customer OTP uses a secondary Firebase app so the shop Gmail session stays signed in.
+Sync never uploads face embeddings, face photos, NID numbers, or NID photos. Those bytes go only into the encrypted Drive `appDataFolder` file `nsedo-sensitive.enc`. The AES key is stored in the signed-in user's private Firestore profile so a new phone can decrypt after the same Gmail sign-in. That key document does not contain face or NID data. Customer OTP uses a secondary Firebase app so the shop Gmail session stays signed in.
 
 ## কীস্টোর / Signing
 
@@ -110,13 +110,14 @@ This is a demo key checked in so the release build is reproducible. Replace it b
 - JSON ব্যাকআপ/রিস্টোর। মুখ ও এনআইডি ডিফল্টে ফাইলে থাকে না। টিক দিলে শুধু সেই ফাইলে যোগ হয়।
 - বাকি সীমা: ডিফল্ট, খদ্দেরপ্রতি, দৈনিক। সতর্ক বা আটকানো।
 - স্লিপ স্ক্যান: ক্যামেরা বা গ্যালারি, ML Kit টেক্সট রিকগনিশন, তারপর আপনি মিলিয়ে সেভ করেন। নমুনা স্লিপ দিয়ে এমুলেটরেও দেখা যায়। ল্যাটিন মডেল ইংরেজি ও ইংরেজি অঙ্ক ভালো পড়ে। বাংলা অক্ষর নির্ভরযোগ্য নাও হতে পারে। বাংলা অঙ্ক পার্সার বোঝে।
+- স্ক্যান-টু-সেল: ক্যামেরা, কার্ট, অজানা কোডে নতুন মালের শিট, বারকোড লেবেল।
 - বারকোড দিয়ে মাল যোগ, খোঁজা ও বিক্রি। স্টক কমে।
-- মুখ: ML Kit ফেস ডিটেকশন + MobileFaceNet (TFLite, ১১২×১১২ → ১৯২-মাত্রার এমবেডিং)। এমবেডিং শুধু `vault.db`-তে, অটো ব্যাকআপ ও সিঙ্ক থেকে বাদ। এনরোলের আগে সম্মতি। মুছে ফেলা যায়। মডেল না থাকলে লোকাল গ্রিড এমবেডিং।
+- মুখ: ML Kit ফেস ডিটেকশন + MobileFaceNet (TFLite, ১১২×১১২ → ১৯২-মাত্রার এমবেডিং)। মিল এই ফোনে। এনরোলের আগে সম্মতি। মুছে ফেলা যায়। মডেল না থাকলে লোকাল গ্রিড এমবেডিং। Firestore-এ যায় না।
 - ফোন যাচাই: Firebase Phone Auth সেট থাকলে OTP, নাহলে কল করে নিশ্চিত। ব্যাজ আলাদা।
-- এনআইডি স্ক্যান স্থানীয়। অটো ব্যাকআপে যায় না।
+- এনআইডি স্ক্যান স্থানীয়। Firestore-এ যায় না। দৈনিক Drive ব্যাকআপে এনক্রিপ্ট হয়ে যায়, ডিফল্টে চালু।
 - অ্যাপ পিন ও বায়োমেট্রিক।
 
-Customers and suppliers, credit (বাকি) and payment (জমা), running balance, search, cash box, daily and monthly charts, PDF statement, SMS and WhatsApp drafts (the app never sends by itself), JSON backup, credit limits, slip OCR, barcode stock, on-device face match, phone verification, local NID scan, and a PIN or biometric lock.
+Customers and suppliers, credit (বাকি) and payment (জমা), running balance, search, cash box, daily and monthly charts, PDF statement, SMS and WhatsApp drafts (the app never sends by itself), JSON backup, credit limits, slip OCR, scan-to-sell with cart and barcode labels, on-device face search, phone verification, local NID scan, encrypted daily Drive backup of NID and face data, and a PIN or biometric lock.
 
 ## মুখের মডেল / Face model
 

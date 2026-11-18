@@ -16,6 +16,9 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import bd.robin.hisabkhata.HisabApp
 import bd.robin.hisabkhata.logic.BackupBundle
+import bd.robin.hisabkhata.logic.BackupSeal
+import bd.robin.hisabkhata.logic.DrivePolicy
+import bd.robin.hisabkhata.logic.SensitivePack
 import com.google.android.gms.auth.api.identity.AuthorizationRequest
 import com.google.android.gms.auth.api.identity.Identity
 import com.google.android.gms.common.api.Scope
@@ -37,9 +40,6 @@ import java.util.concurrent.TimeUnit
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
-import javax.crypto.Cipher
-import javax.crypto.spec.GCMParameterSpec
-import javax.crypto.spec.SecretKeySpec
 
 sealed interface DriveResult {
     data object Ok : DriveResult
@@ -67,11 +67,31 @@ class DriveBackup(
     suspend fun restore(): DriveResult = withContext(Dispatchers.IO) {
         val token = accessToken() ?: return@withContext DriveResult.NeedsConsent
         try {
-            val id = find(token) ?: return@withContext DriveResult.Failed("কোনো ব্যাকআপ পাওয়া যায়নি।")
+            val id = find(token, DrivePolicy.LEDGER) ?: return@withContext DriveResult.Failed("কোনো ব্যাকআপ পাওয়া যায়নি।")
             val secret = key(fetchRemote = true)
-            val bundle = readZip(openSeal(secret, download(token, id)))
+            val bundle = readZip(BackupSeal.open(secret, download(token, id)))
             repo.replaceFrom(bundle)
+            val sensitiveId = find(token, DrivePolicy.SENSITIVE)
+            if (sensitiveId != null) {
+                val rows = readSensitive(BackupSeal.open(secret, download(token, sensitiveId)))
+                repo.applySensitive(rows)
+            }
             settings.update(notify = false) { it.copy(offerDriveRestore = false, lastBackupError = "") }
+            DriveResult.Ok
+        } catch (error: Throwable) {
+            failed(error)
+        }
+    }
+
+    suspend fun deleteSensitive(): DriveResult = withContext(Dispatchers.IO) {
+        val token = accessToken() ?: return@withContext DriveResult.NeedsConsent
+        try {
+            find(token, DrivePolicy.SENSITIVE)?.let { remove(token, it) }
+            val ledger = repo.snapshot(false)
+            val secret = key(fetchRemote = true)
+            val sealed = BackupSeal.seal(secret, zip(json.encodeToString(ledger), includeSensitive = false))
+            val existing = find(token, DrivePolicy.LEDGER)
+            if (existing == null) create(token, DrivePolicy.LEDGER, sealed) else replace(token, existing, sealed)
             DriveResult.Ok
         } catch (error: Throwable) {
             failed(error)
@@ -92,12 +112,17 @@ class DriveBackup(
     private suspend fun upload(token: String) {
         val current = settings.current()
         val bundle = repo.snapshot(current.backupIncludeSensitive)
-        val zip = zip(json.encodeToString(bundle), current.backupIncludeSensitive)
         val secret = key(fetchRemote = true)
         publishKey(current.accountUid, secret)
-        val sealed = seal(secret, zip)
-        val existing = find(token)
-        if (existing == null) create(token, sealed) else replace(token, existing, sealed)
+        val ledger = BackupSeal.seal(secret, zip(json.encodeToString(bundle.copy(sensitive = emptyList())), includeSensitive = false))
+        val existing = find(token, DrivePolicy.LEDGER)
+        if (existing == null) create(token, DrivePolicy.LEDGER, ledger) else replace(token, existing, ledger)
+        if (DrivePolicy.uploadsSensitive(current.backupIncludeSensitive)) {
+            val pack = json.encodeToString(SensitivePack(bundle.sensitive))
+            val sealed = BackupSeal.seal(secret, zipSensitive(pack))
+            val prior = find(token, DrivePolicy.SENSITIVE)
+            if (prior == null) create(token, DrivePolicy.SENSITIVE, sealed) else replace(token, prior, sealed)
+        }
         settings.update(notify = false) { it.copy(lastBackupAt = System.currentTimeMillis(), lastBackupError = "") }
     }
 
@@ -139,7 +164,7 @@ class DriveBackup(
             .await()
     }
 
-    private fun zip(ledger: String, sensitive: Boolean): ByteArray {
+    private fun zip(ledger: String, includeSensitive: Boolean): ByteArray {
         val out = ByteArrayOutputStream()
         ZipOutputStream(out).use { zip ->
             zip.putNextEntry(ZipEntry("ledger.json"))
@@ -149,10 +174,31 @@ class DriveBackup(
                 if (!root.exists()) return@forEach
                 root.walkTopDown().filter { it.isFile }.forEach { file ->
                     val rel = file.relativeTo(root).invariantSeparatorsPath
-                    if (!sensitive && (rel.startsWith("faces") || rel.startsWith("nid"))) return@forEach
+                    if (!DrivePolicy.backupFileIncluded(rel, includeSensitive)) return@forEach
                     zip.putNextEntry(ZipEntry(prefix + rel))
                     file.inputStream().use { it.copyTo(zip) }
                     zip.closeEntry()
+                }
+            }
+        }
+        return out.toByteArray()
+    }
+
+    private fun zipSensitive(pack: String): ByteArray {
+        val out = ByteArrayOutputStream()
+        ZipOutputStream(out).use { zip ->
+            zip.putNextEntry(ZipEntry("sensitive.json"))
+            zip.write(pack.toByteArray())
+            zip.closeEntry()
+            val root = context.filesDir
+            if (root.exists()) {
+                root.walkTopDown().filter { it.isFile }.forEach { file ->
+                    val rel = file.relativeTo(root).invariantSeparatorsPath
+                    if (!DrivePolicy.backupFileIncluded(rel, includeSensitive = false)) {
+                        zip.putNextEntry(ZipEntry("files/$rel"))
+                        file.inputStream().use { it.copyTo(zip) }
+                        zip.closeEntry()
+                    }
                 }
             }
         }
@@ -179,21 +225,40 @@ class DriveBackup(
         return bundle ?: error("ledger missing")
     }
 
+    private fun readSensitive(bytes: ByteArray): List<bd.robin.hisabkhata.logic.SensitiveBackup> {
+        var rows = emptyList<bd.robin.hisabkhata.logic.SensitiveBackup>()
+        ZipInputStream(bytes.inputStream()).use { zip ->
+            var entry = zip.nextEntry
+            while (entry != null) {
+                if (!entry.isDirectory) {
+                    val data = zip.readBytes()
+                    when {
+                        entry.name == "sensitive.json" -> rows = json.decodeFromString<SensitivePack>(data.decodeToString()).rows
+                        entry.name.startsWith("files/") -> write(context.filesDir, entry.name.removePrefix("files/"), data)
+                    }
+                }
+                zip.closeEntry()
+                entry = zip.nextEntry
+            }
+        }
+        return rows
+    }
+
     private fun write(root: File, rel: String, data: ByteArray) {
         val file = File(root, rel)
         file.parentFile?.mkdirs()
         file.writeBytes(data)
     }
 
-    private fun find(token: String): String? {
-        val query = java.net.URLEncoder.encode("name='$FILE_NAME'", "UTF-8")
+    private fun find(token: String, name: String): String? {
+        val query = java.net.URLEncoder.encode("name='$name'", "UTF-8")
         val text = http(token, "https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&fields=files(id,name)&q=$query")
         return Regex(""""id"\s*:\s*"([^"]+)"""").find(text)?.groupValues?.get(1)
     }
 
-    private fun create(token: String, bytes: ByteArray) {
+    private fun create(token: String, name: String, bytes: ByteArray) {
         val boundary = "nsedo${System.currentTimeMillis()}"
-        val meta = """{"name":"$FILE_NAME","parents":["appDataFolder"]}"""
+        val meta = """{"name":"$name","parents":["appDataFolder"]}"""
         val body = ByteArrayOutputStream()
         body.write("--$boundary\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n$meta\r\n".toByteArray())
         body.write("--$boundary\r\nContent-Type: application/octet-stream\r\n\r\n".toByteArray())
@@ -208,6 +273,10 @@ class DriveBackup(
 
     private fun download(token: String, id: String): ByteArray =
         httpBytes(token, "https://www.googleapis.com/drive/v3/files/$id?alt=media")
+
+    private fun remove(token: String, id: String) {
+        httpBytes(token, "https://www.googleapis.com/drive/v3/files/$id", "DELETE")
+    }
 
     private fun http(token: String, endpoint: String, method: String = "GET", body: ByteArray? = null, type: String? = null): String =
         httpBytes(token, endpoint, method, body, type).decodeToString()
@@ -248,22 +317,9 @@ class DriveBackup(
 
     companion object {
         const val SCOPE = "https://www.googleapis.com/auth/drive.appdata"
-        const val FILE_NAME = "nsedo-ledger.enc"
+        const val FILE_NAME = DrivePolicy.LEDGER
         const val CONSENT_CODE = 4102
     }
-}
-
-private fun seal(key: ByteArray, plain: ByteArray): ByteArray {
-    val iv = ByteArray(12).also { SecureRandom().nextBytes(it) }
-    val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-    cipher.init(Cipher.ENCRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(128, iv))
-    return iv + cipher.doFinal(plain)
-}
-
-private fun openSeal(key: ByteArray, sealed: ByteArray): ByteArray {
-    val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-    cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), GCMParameterSpec(128, sealed.copyOfRange(0, 12)))
-    return cipher.doFinal(sealed.copyOfRange(12, sealed.size))
 }
 
 class DriveCenter(

@@ -350,6 +350,8 @@ class LedgerRepository(
                     faceConsentAt = row.faceConsentAt,
                     nidNumber = row.nidNumber,
                     nidName = row.nidName,
+                    facePhotoRel = relOf(row.facePhotoPath),
+                    nidPhotoRel = relOf(row.nidPhotoPath),
                 )
             }
         } else {
@@ -383,24 +385,45 @@ class LedgerRepository(
             db.sales().upsertAll(bundle.sales.map { it.toEntity().copy(ownerUid = user) })
             db.deletions().upsertAll(bundle.deletions.map { DeletionEntity(it.id, it.collection, it.deletedAt, user) })
         }
-        if (bundle.sensitive.isNotEmpty()) {
-            bundle.sensitive.forEach { item ->
-                vault.sensitive().upsert(
-                    SensitiveEntity(
-                        partyId = item.partyId,
-                        faceEmbedding = item.faceEmbeddingB64.fromBase64(),
-                        facePhotoPath = "",
-                        faceConsentAt = item.faceConsentAt,
-                        faceModel = item.faceModel,
-                        nidNumber = item.nidNumber,
-                        nidName = item.nidName,
-                        nidPhotoPath = "",
-                        updatedAt = System.currentTimeMillis(),
-                    ),
-                )
-            }
-        }
+        if (bundle.sensitive.isNotEmpty()) applySensitiveRows(bundle.sensitive)
         changed()
+    }
+
+    suspend fun applySensitive(rows: List<SensitiveBackup>) = withIo {
+        if (rows.isEmpty()) return@withIo
+        applySensitiveRows(rows)
+    }
+
+    private suspend fun applySensitiveRows(rows: List<SensitiveBackup>) {
+        val now = System.currentTimeMillis()
+        rows.forEach { item ->
+            vault.sensitive().upsert(
+                SensitiveEntity(
+                    partyId = item.partyId,
+                    faceEmbedding = item.faceEmbeddingB64.fromBase64(),
+                    facePhotoPath = resolveStored(item.facePhotoRel),
+                    faceConsentAt = item.faceConsentAt,
+                    faceModel = item.faceModel,
+                    nidNumber = item.nidNumber,
+                    nidName = item.nidName,
+                    nidPhotoPath = resolveStored(item.nidPhotoRel),
+                    updatedAt = now,
+                ),
+            )
+        }
+    }
+
+    private fun relOf(path: String): String {
+        if (path.isBlank()) return ""
+        val root = context.filesDir.absolutePath.trimEnd('/')
+        val abs = File(path).absolutePath
+        return if (abs.startsWith(root)) abs.removePrefix(root).trimStart('/') else ""
+    }
+
+    private fun resolveStored(rel: String): String {
+        if (rel.isBlank() || rel.contains("..")) return ""
+        val file = File(context.filesDir, rel)
+        return if (file.exists()) file.absolutePath else ""
     }
 
     suspend fun eraseBusinessData() = withIo {

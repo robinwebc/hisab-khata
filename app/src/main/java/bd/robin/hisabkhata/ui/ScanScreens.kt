@@ -1,7 +1,12 @@
 package bd.robin.hisabkhata.ui
 
 import android.Manifest
+import android.app.Activity
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
 import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -50,6 +55,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import bd.robin.hisabkhata.BuildConfig
 import bd.robin.hisabkhata.R
 import bd.robin.hisabkhata.data.Files
 import bd.robin.hisabkhata.data.FirebaseGate
@@ -70,6 +76,7 @@ import bd.robin.hisabkhata.logic.toE164Bd
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -221,6 +228,7 @@ fun FaceScanScreen(partyId: String, onOpen: (String) -> Unit, onBack: () -> Unit
     val container = LocalContainer.current
     val scope = rememberCoroutineScope()
     val people by container.repo.observeAllSensitive().collectAsStateWithLifecycle(emptyList())
+    val parties by container.repo.observeParties().collectAsStateWithLifecycle(emptyList())
     var consented by remember { mutableStateOf(partyId.isBlank()) }
     var capture by remember { mutableStateOf<ImageCapture?>(null) }
     var front by remember { mutableStateOf(true) }
@@ -231,9 +239,75 @@ fun FaceScanScreen(partyId: String, onOpen: (String) -> Unit, onBack: () -> Unit
     val noFace = stringResource(R.string.face_no_face)
     val saved = stringResource(R.string.face_saved)
     val engineName = if (container.faces.usingMobileFaceNet) stringResource(R.string.face_model_tflite) else stringResource(R.string.face_model_local)
+    fun matchProbe(embedding: FloatArray, path: String) {
+        val gallery = people.mapNotNull { row ->
+            val vector = row.faceEmbedding?.toFloats() ?: return@mapNotNull null
+            if (row.faceModel != container.faces.modelName || vector.isEmpty()) return@mapNotNull null
+            row.partyId to vector
+        }
+        val hit = bestFaceMatch(embedding, gallery, container.faces.threshold)
+        if (hit == null) {
+            message = context.getString(R.string.face_no_match)
+            PendingCapture.photoPath = path
+            PendingCapture.faceEmbedding = embedding
+            PendingCapture.faceModel = container.faces.modelName
+            matchId = null
+        } else {
+            score = (hit.score * 100).toInt().coerceIn(0, 100)
+            message = context.getString(R.string.face_match)
+            matchId = hit.partyId
+        }
+    }
+    fun runSample() {
+        scope.launch {
+            busy = true
+            val bitmap = sampleFaceBitmap()
+            val embedding = withContext(Dispatchers.Default) { container.faces.embed(bitmap) }
+            val known = container.repo.listParties()
+            val target = known.firstOrNull { it.id == "sample-karim" } ?: known.firstOrNull { it.type == bd.robin.hisabkhata.logic.Kind.CUSTOMER }
+            if (target == null) {
+                message = context.getString(R.string.face_no_match)
+                busy = false
+                return@launch
+            }
+            val old = container.repo.getSensitive(target.id)
+            val photo = Files.saveJpeg(context, bitmap, "faces", "${target.id}.jpg")
+            container.repo.saveSensitive(
+                SensitiveEntity(
+                    partyId = target.id,
+                    faceEmbedding = embedding.toBlob(),
+                    facePhotoPath = photo,
+                    faceConsentAt = old?.faceConsentAt ?: System.currentTimeMillis(),
+                    faceModel = container.faces.modelName,
+                    nidNumber = old?.nidNumber.orEmpty(),
+                    nidName = old?.nidName.orEmpty(),
+                    nidPhotoPath = old?.nidPhotoPath.orEmpty(),
+                    updatedAt = System.currentTimeMillis(),
+                ),
+            )
+            val gallery = listOf(target.id to embedding)
+            val hit = bestFaceMatch(embedding, gallery, container.faces.threshold)
+            score = ((hit?.score ?: 0f) * 100).toInt().coerceIn(0, 100)
+            message = context.getString(R.string.face_match)
+            matchId = target.id
+            busy = false
+        }
+    }
+    LaunchedEffect(partyId) {
+        if (!BuildConfig.DEBUG || partyId.isNotBlank()) return@LaunchedEffect
+        val shot = context.findActivity()?.intent?.getStringExtra("nsedo_shot")
+        if (shot != "face") return@LaunchedEffect
+        repeat(25) {
+            if (container.repo.listParties().any { it.type == bd.robin.hisabkhata.logic.Kind.CUSTOMER }) {
+                runSample()
+                return@LaunchedEffect
+            }
+            delay(200)
+        }
+    }
     if (partyId.isNotBlank() && !consented) {
         Scaffold(topBar = { SimpleBar(stringResource(R.string.face_enroll_title), onBack) }) { padding ->
-            Column(Modifier.fillMaxSize().padding(padding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.fillMaxSize().padding(padding).padding(16.dp).tag("face_register"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(stringResource(R.string.face_consent), style = MaterialTheme.typography.bodyLarge)
                 Text(stringResource(R.string.face_local_note))
                 BigButton(stringResource(R.string.face_consent_yes), modifier = Modifier.tag("face_consent")) { consented = true }
@@ -290,23 +364,7 @@ fun FaceScanScreen(partyId: String, onOpen: (String) -> Unit, onBack: () -> Unit
                         context.toast(saved)
                         onBack()
                     } else {
-                        val gallery = people.mapNotNull { row ->
-                            val vector = row.faceEmbedding?.toFloats() ?: return@mapNotNull null
-                            if (row.faceModel != container.faces.modelName || vector.isEmpty()) return@mapNotNull null
-                            row.partyId to vector
-                        }
-                        val hit = bestFaceMatch(embedding, gallery, container.faces.threshold)
-                        if (hit == null) {
-                            message = context.getString(R.string.face_no_match)
-                            PendingCapture.photoPath = path
-                            PendingCapture.faceEmbedding = embedding
-                            PendingCapture.faceModel = container.faces.modelName
-                            matchId = null
-                        } else {
-                            score = (hit.score * 100).toInt().coerceIn(0, 100)
-                            message = context.getString(R.string.face_match)
-                            matchId = hit.partyId
-                        }
+                        matchProbe(embedding, path)
                     }
                     busy = false
                 }
@@ -315,8 +373,14 @@ fun FaceScanScreen(partyId: String, onOpen: (String) -> Unit, onBack: () -> Unit
                 message = noFace
             })
         }
+        if (partyId.isBlank()) {
+            BigOutlined(stringResource(R.string.face_sample), modifier = Modifier.tag("face_sample")) { runSample() }
+        }
         if (matchId != null) {
-            Text(stringResource(R.string.face_score, score))
+            val found = parties.find { it.id == matchId }
+            Text(found?.name ?: stringResource(R.string.face_match), style = MaterialTheme.typography.titleLarge, modifier = Modifier.tag("face_result_name"))
+            Text(found?.phone.orEmpty())
+            Text(stringResource(R.string.face_score, score), modifier = Modifier.tag("face_result"))
             BigButton(stringResource(R.string.face_open), modifier = Modifier.tag("face_open")) { onOpen("detail/$matchId") }
         } else if (message.isNotBlank() && partyId.isBlank()) {
             BigButton(stringResource(R.string.face_create), modifier = Modifier.tag("face_create")) { onOpen("edit?id=&face=1") }
@@ -485,6 +549,20 @@ fun VerifyScreen(partyId: String, onBack: () -> Unit) {
             }
         }
     }
+}
+
+private fun sampleFaceBitmap(): Bitmap {
+    val bitmap = Bitmap.createBitmap(160, 200, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    canvas.drawColor(Color.WHITE)
+    val skin = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(196, 146, 110) }
+    val ink = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(40, 32, 28) }
+    canvas.drawOval(30f, 16f, 130f, 140f, skin)
+    canvas.drawCircle(62f, 70f, 6f, ink)
+    canvas.drawCircle(98f, 70f, 6f, ink)
+    canvas.drawArc(58f, 88f, 102f, 120f, 10f, 160f, false, ink.apply { style = Paint.Style.STROKE; strokeWidth = 3f })
+    canvas.drawRect(48f, 150f, 112f, 200f, skin)
+    return bitmap
 }
 
 @Composable

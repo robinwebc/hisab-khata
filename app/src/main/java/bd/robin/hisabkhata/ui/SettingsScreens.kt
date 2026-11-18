@@ -6,6 +6,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.biometric.BiometricManager
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -41,6 +43,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.core.os.LocaleListCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import android.app.Activity
 import bd.robin.hisabkhata.BuildConfig
 import bd.robin.hisabkhata.R
 import bd.robin.hisabkhata.data.AppSettings
@@ -63,6 +66,7 @@ import bd.robin.hisabkhata.logic.ProfileBackup
 import bd.robin.hisabkhata.logic.dropDigit
 import bd.robin.hisabkhata.logic.pushDigit
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
@@ -334,6 +338,7 @@ private fun businessLabel(key: String): String = when (key) {
     else -> stringResource(R.string.business_other)
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun SettingsScreen(onOpen: (String) -> Unit, onBack: () -> Unit) {
     val context = LocalContext.current
@@ -345,6 +350,14 @@ fun SettingsScreen(onOpen: (String) -> Unit, onBack: () -> Unit) {
     var daily by rememberSaveable(settings.defaultDailyLimit) { mutableStateOf(settings.defaultDailyLimit.toString()) }
     val canBio = remember {
         BiometricManager.from(context).canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK) == BiometricManager.BIOMETRIC_SUCCESS
+    }
+    var confirmDelete by remember { mutableStateOf(false) }
+    val backupBring = remember { BringIntoViewRequester() }
+    LaunchedEffect(Unit) {
+        if (BuildConfig.DEBUG && context.findActivity()?.intent?.getStringExtra("nsedo_shot") == "backup") {
+            delay(500)
+            backupBring.bringIntoView()
+        }
     }
     Scaffold(topBar = { SimpleBar(stringResource(R.string.settings_title), onBack) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -416,6 +429,7 @@ fun SettingsScreen(onOpen: (String) -> Unit, onBack: () -> Unit) {
                     context.toast(context.getString(R.string.saved))
                 }
             }
+            Column(Modifier.bringIntoViewRequester(backupBring).tag("backup_block"), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(stringResource(R.string.backup_title), style = MaterialTheme.typography.titleMedium)
             Text(
                 if (settings.lastBackupAt > 0) stringResource(R.string.backup_last, java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT).format(java.util.Date(settings.lastBackupAt)))
@@ -460,6 +474,10 @@ fun SettingsScreen(onOpen: (String) -> Unit, onBack: () -> Unit) {
                     }
                 }
             }
+            BigOutlined(stringResource(R.string.backup_delete_sensitive), modifier = Modifier.tag("backup_delete_sensitive")) {
+                confirmDelete = true
+            }
+            }
             Text(stringResource(R.string.security_title), style = MaterialTheme.typography.titleMedium)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
@@ -493,6 +511,29 @@ fun SettingsScreen(onOpen: (String) -> Unit, onBack: () -> Unit) {
                 })
             }
         }
+    }
+    if (confirmDelete) {
+        ConfirmDialog(
+            title = stringResource(R.string.backup_delete_sensitive_title),
+            body = stringResource(R.string.backup_delete_sensitive_body),
+            confirm = stringResource(R.string.backup_delete_sensitive),
+            onConfirm = {
+                confirmDelete = false
+                val activity = context as? Activity ?: return@ConfirmDialog
+                scope.launch {
+                    when (val gate = container.drive.ensureAccess(activity)) {
+                        DriveResult.NeedsConsent -> context.toast(context.getString(R.string.backup_consent))
+                        is DriveResult.Failed -> context.toast(gate.message)
+                        DriveResult.Ok -> when (val outcome = container.drive.deleteSensitive()) {
+                            DriveResult.Ok -> context.toast(context.getString(R.string.backup_sensitive_deleted))
+                            DriveResult.NeedsConsent -> context.toast(context.getString(R.string.backup_consent))
+                            is DriveResult.Failed -> context.toast(outcome.message)
+                        }
+                    }
+                }
+            },
+            onDismiss = { confirmDelete = false },
+        )
     }
 }
 
